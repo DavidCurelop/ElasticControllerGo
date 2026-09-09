@@ -1,4 +1,4 @@
-module example.com/hello
+module ElasticController
 
 go 1.27.1
 
