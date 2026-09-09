@@ -33,7 +33,7 @@ func main() {
 		ec2Client: ec2Client,
 	}
 	// TODO: Step 5 - Call instanceService.LaunchInstance(...) and print the instance ID!
-	instanceID, err := instanceService.LaunchInstance(ctx, "ami-0f8a61bd1accaee", types.InstanceTypeT2Micro)
+	instanceID, err := instanceService.LaunchInstance(ctx, "ami-0f8a61b66d1accaee", types.InstanceTypeT2Micro)
 
 	if err != nil{
 		log.Fatalf("failed to launch instance %s", err)
