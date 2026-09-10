@@ -123,9 +123,9 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 	return instances, nil
 }
 
-func (s *InstanceService) TerminateInstances(ctx context.Context, instances []types.Instance, amount int ) (*ec2.TerminateInstancesOutput, error) {
+func (s *InstanceService) TerminateInstances(ctx context.Context, instances []types.Instance, amount int) (*ec2.TerminateInstancesOutput, error) {
 	var instancesID []string
-	if amount > len(instances) || amount < 0{
+	if amount > len(instances) || amount < 0 {
 		amount = len(instances)
 	}
 
@@ -142,9 +142,9 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 		return nil, fmt.Errorf("%s", err)
 	}
 
-for _, terminatedInstance := range TerminateOutput.TerminatingInstances{
-	fmt.Printf("Succesfully terminated Instance: %s Status: %s\n", *aws.String(*terminatedInstance.InstanceId), terminatedInstance.CurrentState.Name)
+	for _, terminatedInstance := range TerminateOutput.TerminatingInstances {
+		fmt.Printf("Succesfully terminated Instance: %s Status: %s\n", *aws.String(*terminatedInstance.InstanceId), terminatedInstance.CurrentState.Name)
 	}
-	
+
 	return TerminateOutput, nil
 }
