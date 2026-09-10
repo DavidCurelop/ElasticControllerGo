@@ -4,15 +4,27 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	elbtypes "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 )
 
 type InstanceService struct {
 	ec2Client *ec2.Client
+}
+
+type MetricService struct {
+	cloudwatchClient *cloudwatch.Client
+}
+
+type elbService struct {
+	elbClient *elasticloadbalancingv2.Client
 }
 
 func main() {
@@ -21,7 +33,9 @@ func main() {
 	ctx := context.Background()
 	//awsConfig, configError := config.LoadDefaultConfig(ctx)
 	awsConfig, configError := config.LoadDefaultConfig(ctx)
-
+	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
+	instanceAMI := "ami-0f8a61b66d1accaee"
+	instanceTag := "TGTest"
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
 		log.Fatalf("AWS config loading failed with error %v", configError)
@@ -33,9 +47,16 @@ func main() {
 	instanceService := &InstanceService{
 		ec2Client: ec2Client,
 	}
+
+	elbClient := elasticloadbalancingv2.NewFromConfig(awsConfig)
+
+	elbService := &elbService{
+		elbClient: elbClient,
+	}
+
 	// TODO: Step 5 - Call instanceService.LaunchInstance(...) and print the instance ID!
-	for i := 0; i < 1; i++ {
-		instanceID, err := instanceService.LaunchInstance(ctx, "ami-0f8a61b66d1accaee", types.InstanceTypeT2Micro, "TagInstanceTest")
+	for i := 0; i < 2; i++ {
+		instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, types.InstanceTypeT2Micro, instanceTag)
 
 		if err != nil {
 			log.Fatalf("failed to launch instance %s", err)
@@ -43,7 +64,11 @@ func main() {
 
 		log.Printf("Launched instance: %s", instanceID)
 	}
-	instances, err := instanceService.GetInstancesByTag(ctx, "Name", "TagInstanceTest")
+
+//	time.Sleep(5 * time.Minute)
+
+	instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
+	log.Printf("Found %d matching instances", len(instances))
 
 	if err != nil {
 		log.Fatalf("Error retrieving instances %s", err)
@@ -51,7 +76,16 @@ func main() {
 
 	for i, instance := range instances {
 		fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
+
+		if instance.State.Name == "running" {
+			elberr := elbService.RegisterTarget(ctx, tgARN, instance)
+			if elberr != nil {
+				log.Fatalf("Error assigning %v to TG: %s", aws.ToString(instance.InstanceId), elberr)
+			}
+			fmt.Printf("Successfully added %v to TG", instance.InstanceId)
+		} 
 	}
+	time.Sleep(60 * time.Second)
 
 	instanceService.TerminateInstances(ctx, instances, -1)
 }
@@ -67,6 +101,7 @@ func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, in
 		InstanceType: instanceType,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
+
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeInstance,
@@ -88,8 +123,6 @@ func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, in
 	if len(runInstancesOutput.Instances) == 0 {
 		return "", fmt.Errorf("no %q instance created", imageID)
 	}
-
-	fmt.Println("Successfully tagged instance")
 
 	// TODO: Step 4 - Inspect the returned reservation output to extract and return the instance ID string.
 	return aws.ToString(runInstancesOutput.Instances[0].InstanceId), nil
@@ -147,4 +180,57 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	}
 
 	return TerminateOutput, nil
+}
+
+/*
+func (s *MetricService) GetAverageCPUUtilization(ctx context.Context, instanceID string, lookbackWindow time.Duration) (float64, error) {
+    queryEndTime := time.Now()
+    queryStartTime := queryEndTime.Add(-lookbackWindow)
+    // TODO: Step 1 - Construct &cloudwatch.GetMetricDataInput with explicit multi-line fields:
+    //       - StartTime: aws.Time(queryStartTime)
+    //       - EndTime:   aws.Time(queryEndTime)
+    //       - MetricDataQueries: []types.MetricDataQuery{ ... }
+    //         Each query needs:
+    //           - Id: (a unique query identifier string, e.g., "cpuQuery")
+    //           - MetricStat: Metric (Namespace, MetricName, Dimensions), Period, Stat
+	metricsInput := cloudwatch.GetMetricDataInput{
+		StartTime: aws.Time(queryStartTime),
+		EndTime: aws.Time(queryEndTime),
+		MetricDataQueries: []cwtypes.MetricDataQuery{
+			{Id: aws.String("cpuQuery"),
+			MetricStat: &cwtypes.MetricStat{
+				[]types.Metric{
+
+				},
+
+			},},
+		},
+	}
+
+    // TODO: Step 2 - Call s.cloudwatchClient.GetMetricData(ctx, metricDataInput)
+    // TODO: Step 3 - Apply "Line of sight" error check and storytelling wrapping:
+    //       fmt.Errorf("querying CloudWatch CPU metrics for instance %q: %w", instanceID, err)
+    // TODO: Step 4 - Inspect the returned results. Handle the "no data yet" case safely.
+    //       Return the most recent data point value, or a sentinel/zero value if empty.
+}*/
+
+func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, instance types.Instance) error {
+	// TODO: Step 1 - Build &elasticloadbalancingv2.RegisterTargetsInput
+	registerTargetInput := &elasticloadbalancingv2.RegisterTargetsInput{
+		TargetGroupArn: aws.String(targetGroupARN),
+		Targets: []elbtypes.TargetDescription{{
+			Id:               aws.String(*instance.InstanceId),
+			AvailabilityZone: nil,
+		}},
+	}
+	// TODO: Step 2 - Call s.elbClient.RegisterTargets(ctx, registerTargetsInput)
+	_, err := s.elbClient.RegisterTargets(ctx, registerTargetInput)
+	// TODO: Step 3 - Line of sight error handling with storytelling wrapping:
+	//       fmt.Errorf("registering instance %q to target group %q: %w", instanceID, targetGroupARN, err)
+	if err != nil {
+		return fmt.Errorf("registering instance %q to target group %q: %w", *instance.InstanceId, targetGroupARN, err)
+	}
+
+	print("Added instance to TG: %v", instance.InstanceId)
+	return err
 }
