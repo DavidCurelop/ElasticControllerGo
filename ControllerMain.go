@@ -45,7 +45,7 @@ func main() {
 	instanceIDOutput, err := instanceService.GetInstancesByTag(ctx, "Name", "TagInstanceTest")
 
 	if err != nil{
-		log.Fatalf("Error retrieving instances", err)
+		log.Fatalf("Error retrieving instances %s", err)
 	}
 
 	for i, ID := range instanceIDOutput{
@@ -106,7 +106,7 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 	describeInstanceOutput, err := s.ec2Client.DescribeInstances(ctx, describeInstancesInput)
 	// TODO: Step 3 - Handle error with early exit and storytelling fmt.Errorf wrapping
 	if err != nil {
-		return nil, fmt.Errorf("Something went wrong while looking for instances", err)
+		return nil, fmt.Errorf("Something went wrong while looking for instances %s", err)
 	}
 	// TODO: Step 4 - Initialize a slice: var instanceIDs []string
 	var instanceIDs []string
