@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -27,6 +28,20 @@ type elbService struct {
 	elbClient *elasticloadbalancingv2.Client
 }
 
+type MetricRecord struct {
+	ID    string
+	Value float64
+}
+
+func findMetricValue(records []cwtypes.MetricDataResult, targetID string) (float64, bool) {
+	for _, record := range records {
+		if aws.ToString(record.Id) == targetID {
+			return record.Values[0], true
+		}
+	}
+	return 0.0, false
+}
+
 func main() {
 
 	// TODO: Step 1 - Load config via config.LoadDefaultConfig(ctx)
@@ -41,9 +56,8 @@ func main() {
 		log.Fatalf("AWS config loading failed with error %v", configError)
 	}
 
-	// TODO: Step 3 - Create ec2Client := ec2.NewFromConfig(awsConfig)
+	// Service creation and instantiation
 	ec2Client := ec2.NewFromConfig(awsConfig)
-	// TODO: Step 4 - Instantiate &InstanceService{ec2Client: ec2Client}
 	instanceService := &InstanceService{
 		ec2Client: ec2Client,
 	}
@@ -54,8 +68,14 @@ func main() {
 		elbClient: elbClient,
 	}
 
+	cwClient := cloudwatch.NewFromConfig(awsConfig)
+
+	cwService := &MetricService{
+		cloudwatchClient: cwClient,
+	}
+
 	// TODO: Step 5 - Call instanceService.LaunchInstance(...) and print the instance ID!
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 0; i++ {
 		instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, types.InstanceTypeT2Micro, instanceTag)
 
 		if err != nil {
@@ -65,7 +85,7 @@ func main() {
 		log.Printf("Launched instance: %s", instanceID)
 	}
 
-//	time.Sleep(5 * time.Minute)
+	//time.Sleep(3 * time.Minute)
 
 	instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
 	log.Printf("Found %d matching instances", len(instances))
@@ -80,14 +100,23 @@ func main() {
 		if instance.State.Name == "running" {
 			elberr := elbService.RegisterTarget(ctx, tgARN, instance)
 			if elberr != nil {
-				log.Fatalf("Error assigning %v to TG: %s", aws.ToString(instance.InstanceId), elberr)
+				log.Fatalf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
 			}
-			fmt.Printf("Successfully added %v to TG", instance.InstanceId)
-		} 
+			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
+			results, err := cwService.GetInstanceAverageCPUUtilization(ctx, *instance.InstanceId, 10*time.Minute)
+			if err != nil {
+				log.Fatalf("Error getting metrics: %v", err)
+			}
+			cpu, _ :=  findMetricValue(results, "cpuQuery")
+			net, _ :=  findMetricValue(results, "networkInQuery")
+			
+			fmt.Printf("AVG CPU: %v || Network In: %v\n",  cpu, net)
+		}
 	}
-	time.Sleep(60 * time.Second)
 
-	instanceService.TerminateInstances(ctx, instances, -1)
+	//time.Sleep(60 * time.Second)
+
+	//instanceService.TerminateInstances(ctx, instances, -1)
 }
 
 func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, instanceType types.InstanceType, instanceTag string) (string, error) {
@@ -182,37 +211,60 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	return TerminateOutput, nil
 }
 
-/*
-func (s *MetricService) GetAverageCPUUtilization(ctx context.Context, instanceID string, lookbackWindow time.Duration) (float64, error) {
-    queryEndTime := time.Now()
-    queryStartTime := queryEndTime.Add(-lookbackWindow)
-    // TODO: Step 1 - Construct &cloudwatch.GetMetricDataInput with explicit multi-line fields:
-    //       - StartTime: aws.Time(queryStartTime)
-    //       - EndTime:   aws.Time(queryEndTime)
-    //       - MetricDataQueries: []types.MetricDataQuery{ ... }
-    //         Each query needs:
-    //           - Id: (a unique query identifier string, e.g., "cpuQuery")
-    //           - MetricStat: Metric (Namespace, MetricName, Dimensions), Period, Stat
-	metricsInput := cloudwatch.GetMetricDataInput{
+func (s *MetricService) GetInstanceAverageCPUUtilization(ctx context.Context, instanceID string, lookbackWindow time.Duration) ([]cwtypes.MetricDataResult, error) {
+	queryEndTime := time.Now()
+	queryStartTime := queryEndTime.Add(-lookbackWindow)
+	// TODO: Step 1 - Construct &cloudwatch.GetMetricDataInput with explicit multi-line fields:
+	//       - StartTime: aws.Time(queryStartTime)
+	//       - EndTime:   aws.Time(queryEndTime)
+	//       - MetricDataQueries: []types.MetricDataQuery{ ... }
+	//         Each query needs:
+	//           - Id: (a unique query identifier string, e.g., "cpuQuery")
+	//           - MetricStat: Metric (Namespace, MetricName, Dimensions), Period, Stat
+	getmetricsInput := cloudwatch.GetMetricDataInput{
 		StartTime: aws.Time(queryStartTime),
-		EndTime: aws.Time(queryEndTime),
+		EndTime:   aws.Time(queryEndTime),
 		MetricDataQueries: []cwtypes.MetricDataQuery{
 			{Id: aws.String("cpuQuery"),
-			MetricStat: &cwtypes.MetricStat{
-				[]types.Metric{
-
-				},
-
-			},},
+				MetricStat: &cwtypes.MetricStat{
+					Period: aws.Int32(300),
+					Stat:   aws.String("Average"),
+					Metric: &cwtypes.Metric{
+						Namespace:  aws.String("AWS/EC2"),
+						MetricName: aws.String("CPUUtilization"),
+						Dimensions: []cwtypes.Dimension{{
+							Name:  aws.String("InstanceId"),
+							Value: aws.String(instanceID)},
+						},
+					},
+				}},
+			{Id: aws.String("networkInQuery"),
+				MetricStat: &cwtypes.MetricStat{
+					Period: aws.Int32(300),
+					Stat:   aws.String("Average"),
+					Metric: &cwtypes.Metric{
+						Namespace:  aws.String("AWS/EC2"),
+						MetricName: aws.String("NetworkIn"),
+						Dimensions: []cwtypes.Dimension{{
+							Name:  aws.String("InstanceId"),
+							Value: aws.String(instanceID)},
+						},
+					},
+				}},
 		},
 	}
 
-    // TODO: Step 2 - Call s.cloudwatchClient.GetMetricData(ctx, metricDataInput)
-    // TODO: Step 3 - Apply "Line of sight" error check and storytelling wrapping:
-    //       fmt.Errorf("querying CloudWatch CPU metrics for instance %q: %w", instanceID, err)
-    // TODO: Step 4 - Inspect the returned results. Handle the "no data yet" case safely.
-    //       Return the most recent data point value, or a sentinel/zero value if empty.
-}*/
+	// TODO: Step 2 - Call s.cloudwatchClient.GetMetricData(ctx, metricDataInput)
+	getmetricsOutput, err := s.cloudwatchClient.GetMetricData(ctx, &getmetricsInput)
+	// TODO: Step 3 - Apply "Line of sight" error check and storytelling wrapping:
+	//       fmt.Errorf("querying CloudWatch CPU metrics for instance %q: %w", instanceID, err)
+	if err != nil {
+		return nil, fmt.Errorf("querying CloudWatch metrics for instance %q: %w", instanceID, err)
+	}
+	// TODO: Step 4 - Inspect the returned results. Handle the "no data yet" case safely.
+	//       Return the most recent data point value, or a sentinel/zero value if empty.
+	return getmetricsOutput.MetricDataResults, nil
+}
 
 func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, instance types.Instance) error {
 	// TODO: Step 1 - Build &elasticloadbalancingv2.RegisterTargetsInput
@@ -230,7 +282,5 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 	if err != nil {
 		return fmt.Errorf("registering instance %q to target group %q: %w", *instance.InstanceId, targetGroupARN, err)
 	}
-
-	print("Added instance to TG: %v", instance.InstanceId)
 	return err
 }
