@@ -33,13 +33,19 @@ type MetricRecord struct {
 	Value float64
 }
 
-func findMetricValue(records []cwtypes.MetricDataResult, targetID string) (float64, bool) {
+func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookback int) (float64, time.Time, bool) {
+	if len(records) == 0 || lookback < 0 {
+		return 0.0, time.Time{}, false
+	}
 	for _, record := range records {
 		if aws.ToString(record.Id) == targetID {
-			return record.Values[0], true
+			if lookback >= len(record.Values) || lookback >= len(record.Timestamps){
+				return 0.0, time.Time{}, false
+			}
+			return record.Values[lookback], record.Timestamps[lookback], true
 		}
 	}
-	return 0.0, false
+	return 0.0, time.Time{}, false
 }
 
 func main() {
@@ -103,14 +109,19 @@ func main() {
 				log.Fatalf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
 			}
 			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-			results, err := cwService.GetInstanceAverageCPUUtilization(ctx, *instance.InstanceId, 10*time.Minute)
+			results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 10*time.Minute)
 			if err != nil {
 				log.Fatalf("Error getting metrics: %v", err)
 			}
-			cpu, _ :=  findMetricValue(results, "cpuQuery")
-			net, _ :=  findMetricValue(results, "networkInQuery")
-			
-			fmt.Printf("AVG CPU: %v || Network In: %v\n",  cpu, net)
+			cpu, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 0)
+			net, netMeasureTime, _ := findMetricValue(results, "networkInQuery", 0)
+
+			fmt.Printf("AVG CPU at %v: %v || Network In at %v: %v\n", cpuMeasureTime, cpu, netMeasureTime, net)
+
+			cpu1, cpuMeasureTime1, _ := findMetricValue(results, "cpuQuery", 1)
+			net1, netMeasureTime1, _ := findMetricValue(results, "networkInQuery", 1)
+
+			fmt.Printf("AVG CPU at %v: %v || Network In at %v: %v\n", cpuMeasureTime1, cpu1, netMeasureTime1, net1)
 		}
 	}
 
@@ -211,7 +222,7 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	return TerminateOutput, nil
 }
 
-func (s *MetricService) GetInstanceAverageCPUUtilization(ctx context.Context, instanceID string, lookbackWindow time.Duration) ([]cwtypes.MetricDataResult, error) {
+func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID string, lookbackWindow time.Duration) ([]cwtypes.MetricDataResult, error) {
 	queryEndTime := time.Now()
 	queryStartTime := queryEndTime.Add(-lookbackWindow)
 	// TODO: Step 1 - Construct &cloudwatch.GetMetricDataInput with explicit multi-line fields:
@@ -224,6 +235,7 @@ func (s *MetricService) GetInstanceAverageCPUUtilization(ctx context.Context, in
 	getmetricsInput := cloudwatch.GetMetricDataInput{
 		StartTime: aws.Time(queryStartTime),
 		EndTime:   aws.Time(queryEndTime),
+		ScanBy:    cwtypes.ScanByTimestampDescending,
 		MetricDataQueries: []cwtypes.MetricDataQuery{
 			{Id: aws.String("cpuQuery"),
 				MetricStat: &cwtypes.MetricStat{
