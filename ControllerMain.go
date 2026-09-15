@@ -109,7 +109,7 @@ func main() {
 				log.Fatalf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
 			}
 			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-			results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 10*time.Minute)
+			results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 2*time.Minute)
 			if err != nil {
 				log.Fatalf("Error getting metrics: %v", err)
 			}
@@ -141,7 +141,7 @@ func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, in
 		InstanceType: instanceType,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
-
+		Monitoring: &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeInstance,
@@ -239,7 +239,7 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 		MetricDataQueries: []cwtypes.MetricDataQuery{
 			{Id: aws.String("cpuQuery"),
 				MetricStat: &cwtypes.MetricStat{
-					Period: aws.Int32(300),
+					Period: aws.Int32(60),
 					Stat:   aws.String("Average"),
 					Metric: &cwtypes.Metric{
 						Namespace:  aws.String("AWS/EC2"),
@@ -252,7 +252,7 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 				}},
 			{Id: aws.String("networkInQuery"),
 				MetricStat: &cwtypes.MetricStat{
-					Period: aws.Int32(300),
+					Period: aws.Int32(60),
 					Stat:   aws.String("Average"),
 					Metric: &cwtypes.Metric{
 						Namespace:  aws.String("AWS/EC2"),
