@@ -39,7 +39,7 @@ func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookba
 	}
 	for _, record := range records {
 		if aws.ToString(record.Id) == targetID {
-			if lookback >= len(record.Values) || lookback >= len(record.Timestamps){
+			if lookback >= len(record.Values) || lookback >= len(record.Timestamps) {
 				return 0.0, time.Time{}, false
 			}
 			return record.Values[lookback], record.Timestamps[lookback], true
@@ -56,7 +56,10 @@ func main() {
 	awsConfig, configError := config.LoadDefaultConfig(ctx)
 	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
 	instanceAMI := "ami-0f8a61b66d1accaee"
-	instanceTag := "TGTest"
+	instanceTag := "WebServer"
+	instaceType := types.InstanceTypeT2Micro
+	//maxInstances := 5
+	//minInstances := 1
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
 		log.Fatalf("AWS config loading failed with error %v", configError)
@@ -80,54 +83,57 @@ func main() {
 		cloudwatchClient: cwClient,
 	}
 
-	// TODO: Step 5 - Call instanceService.LaunchInstance(...) and print the instance ID!
-	for i := 0; i < 0; i++ {
-		instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, types.InstanceTypeT2Micro, instanceTag)
+	for {
+		instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
+		log.Printf("Found %d matching instances", len(instances))
 
 		if err != nil {
-			log.Fatalf("failed to launch instance %s", err)
+			log.Printf("Error retrieving instances %s", err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
-		log.Printf("Launched instance: %s", instanceID)
-	}
-
-	//time.Sleep(3 * time.Minute)
-
-	instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
-	log.Printf("Found %d matching instances", len(instances))
-
-	if err != nil {
-		log.Fatalf("Error retrieving instances %s", err)
-	}
-
-	for i, instance := range instances {
-		fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
-
-		if instance.State.Name == "running" {
-			elberr := elbService.RegisterTarget(ctx, tgARN, instance)
-			if elberr != nil {
-				log.Fatalf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
-			}
-			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-			results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 2*time.Minute)
+		if len(instances) == 0 {
+			log.Printf("No instances found, starting instance and restarting")
+			instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, instaceType, instanceTag)
 			if err != nil {
-				log.Fatalf("Error getting metrics: %v", err)
+				log.Printf("Error starting instance %v %w", instanceID, err)
+				continue
 			}
-			cpu, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 0)
-			net, netMeasureTime, _ := findMetricValue(results, "networkInQuery", 0)
 
-			fmt.Printf("AVG CPU at %v: %v || Network In at %v: %v\n", cpuMeasureTime, cpu, netMeasureTime, net)
+			log.Printf("Started instance %v succesfully", instanceID)
 
-			cpu1, cpuMeasureTime1, _ := findMetricValue(results, "cpuQuery", 1)
-			net1, netMeasureTime1, _ := findMetricValue(results, "networkInQuery", 1)
-
-			fmt.Printf("AVG CPU at %v: %v || Network In at %v: %v\n", cpuMeasureTime1, cpu1, netMeasureTime1, net1)
+			time.Sleep(3 * time.Minute)
+			continue
 		}
+
+		for i, instance := range instances {
+			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
+
+			if instance.State.Name == "running" {
+				elberr := elbService.RegisterTarget(ctx, tgARN, instance)
+				if elberr != nil {
+					log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
+				results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 2*time.Minute)
+				if err != nil {
+					log.Printf("Error getting metrics: %v", err)
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				//cpu1, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 0)
+				//cpu2, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 1)
+				
+
+			}
+
+		}
+
 	}
 
-	//time.Sleep(60 * time.Second)
-
-	//instanceService.TerminateInstances(ctx, instances, -1)
 }
 
 func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, instanceType types.InstanceType, instanceTag string) (string, error) {
@@ -141,7 +147,7 @@ func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, in
 		InstanceType: instanceType,
 		MinCount:     aws.Int32(1),
 		MaxCount:     aws.Int32(1),
-		Monitoring: &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
+		Monitoring:   &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeInstance,
@@ -295,4 +301,59 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 		return fmt.Errorf("registering instance %q to target group %q: %w", *instance.InstanceId, targetGroupARN, err)
 	}
 	return err
+}
+
+func (s *elbService) GetTargetHealth(ctx context.Context, targetGroupARN string, instance types.Instance) (elbtypes.TargetHealth, error) {
+	// Step 1 - Construct DescribeTargetHealthInput with TargetGroupArn & Targets
+	THInput := &elasticloadbalancingv2.DescribeTargetHealthInput{
+		TargetGroupArn: aws.String(targetGroupARN),
+		Targets: []elbtypes.TargetDescription{
+			{
+				Id: instance.InstanceId,
+			},
+		},
+	}
+
+	// Step 2 - Call s.elbClient.DescribeTargetHealth(ctx, THInput)
+	THOutput, err := s.elbClient.DescribeTargetHealth(ctx, THInput)
+
+	// Step 3 - Line-of-sight error check, wrapped with context
+	if err != nil {
+		return elbtypes.TargetHealth{}, fmt.Errorf("describing target health for instance %s in target group %s: %w",
+			aws.ToString(instance.InstanceId), targetGroupARN, err)
+	}
+
+	// Step 4 - Defensively inspect TargetHealthDescriptions
+	if len(THOutput.TargetHealthDescriptions) == 0 {
+		return elbtypes.TargetHealth{}, fmt.Errorf("no target health descriptions returned for instance %s in target group %s",
+			aws.ToString(instance.InstanceId), targetGroupARN)
+	}
+
+	thd := THOutput.TargetHealthDescriptions[0]
+	if thd.TargetHealth == nil {
+		return elbtypes.TargetHealth{}, fmt.Errorf("target health is nil for instance %s in target group %s",
+			aws.ToString(instance.InstanceId), targetGroupARN)
+	}
+
+	// Step 5 - Return the TargetHealth struct (its State field holds the enum) and nil
+	return *thd.TargetHealth, nil
+}
+
+func (s *elbService) allInstancesHealthy(ctx context.Context, targetGroupARN string, instances []types.Instance) (bool, error) {
+	if len(instances) == 0 {
+		return false, fmt.Errorf("Instances must have at least one instance")
+	}
+
+	for _, instance := range instances {
+		health, err := s.GetTargetHealth(ctx, targetGroupARN, instance)
+
+		if err != nil {
+			return false, fmt.Errorf("There was an error with instance %v in %v TG:%w", aws.ToString(instance.InstanceId), targetGroupARN, err)
+		}
+
+		if health.State != elbtypes.TargetHealthStateEnumHealthy && health.State != elbtypes.TargetHealthStateEnumInitial {
+			return false, nil
+		}
+	}
+	return true, nil
 }
