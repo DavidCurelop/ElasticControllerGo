@@ -49,17 +49,19 @@ func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookba
 }
 
 func main() {
+	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
+	instanceAMI := "ami-0f8a61b66d1accaee"
+	instanceTag := "WebServer"
+	instaceType := types.InstanceTypeT2Micro
+	launchCooldown := 2 * time.Minute
+	errorCooldown := 5 * time.Second
+	maxInstances := 5
+	minInstances := 1
 
 	// TODO: Step 1 - Load config via config.LoadDefaultConfig(ctx)
 	ctx := context.Background()
 	//awsConfig, configError := config.LoadDefaultConfig(ctx)
 	awsConfig, configError := config.LoadDefaultConfig(ctx)
-	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
-	instanceAMI := "ami-0f8a61b66d1accaee"
-	instanceTag := "WebServer"
-	instaceType := types.InstanceTypeT2Micro
-	//maxInstances := 5
-	//minInstances := 1
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
 		log.Fatalf("AWS config loading failed with error %v", configError)
@@ -84,12 +86,13 @@ func main() {
 	}
 
 	for {
+		//Get instances with the tag WebServer
 		instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
 		log.Printf("Found %d matching instances", len(instances))
 
 		if err != nil {
 			log.Printf("Error retrieving instances %s", err)
-			time.Sleep(5 * time.Second)
+			time.Sleep(errorCooldown)
 			continue
 		}
 
@@ -97,16 +100,16 @@ func main() {
 			log.Printf("No instances found, starting instance and restarting")
 			instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, instaceType, instanceTag)
 			if err != nil {
-				log.Printf("Error starting instance %v %w", instanceID, err)
+				log.Printf("Error starting instance %v %v", instanceID, err)
 				continue
 			}
 
 			log.Printf("Started instance %v succesfully", instanceID)
 
-			time.Sleep(3 * time.Minute)
+			time.Sleep(launchCooldown)
 			continue
 		}
-
+		//register running instances to TG
 		for i, instance := range instances {
 			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
 
@@ -114,24 +117,43 @@ func main() {
 				elberr := elbService.RegisterTarget(ctx, tgARN, instance)
 				if elberr != nil {
 					log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
-					time.Sleep(5 * time.Second)
+					time.Sleep(errorCooldown)
 					continue
 				}
 				fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-				results, err := cwService.GetInstanceMetrics(ctx, *instance.InstanceId, 2*time.Minute)
-				if err != nil {
-					log.Printf("Error getting metrics: %v", err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				//cpu1, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 0)
-				//cpu2, cpuMeasureTime, _ := findMetricValue(results, "cpuQuery", 1)
-				
-
 			}
-
 		}
 
+		//Get metrics for instances
+		metrics, err := cwService.GetAllMetrics(ctx, instances, 2*time.Minute)
+		if err != nil {
+			log.Printf("Error loading metrics %v", err)
+			time.Sleep(errorCooldown)
+			continue
+		}
+
+		avgCPU, cpuChangeDelta := getavgCPUandchange(metrics)
+
+		if (avgCPU > 70 || cpuChangeDelta > 10) && len(instances) < maxInstances {
+			instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, instaceType, instanceTag)
+			if err != nil {
+				log.Printf("Error starting instance %v %v", instanceID, err)
+				continue
+			}
+			time.Sleep(launchCooldown)
+			continue
+		}
+
+		if avgCPU < 35 && len(instances) > minInstances {
+			_, err := instanceService.TerminateInstances(ctx, instances, 1)
+			if err != nil {
+				log.Printf("Error starting instance %v", err)
+				continue
+			}
+			time.Sleep(launchCooldown)
+			continue
+		}
+		time.Sleep(1 * time.Minute)
 	}
 
 }
@@ -188,14 +210,16 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 	describeInstanceOutput, err := s.ec2Client.DescribeInstances(ctx, describeInstancesInput)
 	// TODO: Step 3 - Handle error with early exit and storytelling fmt.Errorf wrapping
 	if err != nil {
-		return nil, fmt.Errorf("Something went wrong while looking for instances %s", err)
+		return nil, fmt.Errorf("Something went wrong while looking for instances %w", err)
 	}
 	// TODO: Step 4 - Initialize a slice: var instanceIDs []string
 	var instances []types.Instance
 	// TODO: Step 5 - Range over Reservations and Instances, appending aws.ToString(inst.InstanceId)
 	for _, reservtion := range describeInstanceOutput.Reservations {
 		for _, instance := range reservtion.Instances {
-			instances = append(instances, instance)
+			if instance.State.Name == types.InstanceStateNameRunning || instance.State.Name == types.InstanceStateNamePending {
+				instances = append(instances, instance)
+			}
 		}
 	}
 	// TODO: Step 6 - Return instanceIDs and nil
@@ -210,7 +234,7 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 
 	for i := 0; i < amount; i++ {
 		instance := instances[i]
-		instancesID = append(instancesID, *instance.InstanceId)
+		instancesID = append(instancesID, aws.ToString(instance.InstanceId))
 	}
 	terminateInput := &ec2.TerminateInstancesInput{
 		InstanceIds: instancesID,
@@ -218,7 +242,7 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	TerminateOutput, err := s.ec2Client.TerminateInstances(ctx, terminateInput)
 
 	if err != nil {
-		return nil, fmt.Errorf("%s", err)
+		return nil, fmt.Errorf("%w", err)
 	}
 
 	for _, terminatedInstance := range TerminateOutput.TerminatingInstances {
@@ -226,6 +250,19 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	}
 
 	return TerminateOutput, nil
+}
+
+func (s *MetricService) GetAllMetrics(ctx context.Context, instances []types.Instance, lookbackWindow time.Duration) ([][]cwtypes.MetricDataResult, error) {
+	var metrics [][]cwtypes.MetricDataResult
+	for _, instance := range instances {
+		metricResult, err := s.GetInstanceMetrics(ctx, aws.ToString(instance.InstanceId), lookbackWindow)
+		if err != nil {
+			return nil, fmt.Errorf("Error getting instance metrics: %w", err)
+		}
+
+		metrics = append(metrics, metricResult)
+	}
+	return metrics, nil
 }
 
 func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID string, lookbackWindow time.Duration) ([]cwtypes.MetricDataResult, error) {
@@ -256,19 +293,6 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 						},
 					},
 				}},
-			{Id: aws.String("networkInQuery"),
-				MetricStat: &cwtypes.MetricStat{
-					Period: aws.Int32(60),
-					Stat:   aws.String("Average"),
-					Metric: &cwtypes.Metric{
-						Namespace:  aws.String("AWS/EC2"),
-						MetricName: aws.String("NetworkIn"),
-						Dimensions: []cwtypes.Dimension{{
-							Name:  aws.String("InstanceId"),
-							Value: aws.String(instanceID)},
-						},
-					},
-				}},
 		},
 	}
 
@@ -289,7 +313,7 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 	registerTargetInput := &elasticloadbalancingv2.RegisterTargetsInput{
 		TargetGroupArn: aws.String(targetGroupARN),
 		Targets: []elbtypes.TargetDescription{{
-			Id:               aws.String(*instance.InstanceId),
+			Id:               aws.String(aws.ToString(instance.InstanceId)),
 			AvailabilityZone: nil,
 		}},
 	}
@@ -298,7 +322,7 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 	// TODO: Step 3 - Line of sight error handling with storytelling wrapping:
 	//       fmt.Errorf("registering instance %q to target group %q: %w", instanceID, targetGroupARN, err)
 	if err != nil {
-		return fmt.Errorf("registering instance %q to target group %q: %w", *instance.InstanceId, targetGroupARN, err)
+		return fmt.Errorf("registering instance %q to target group %q: %w", aws.ToString(instance.InstanceId), targetGroupARN, err)
 	}
 	return err
 }
@@ -356,4 +380,30 @@ func (s *elbService) allInstancesHealthy(ctx context.Context, targetGroupARN str
 		}
 	}
 	return true, nil
+}
+
+func getavgCPUandchange(metrics [][]cwtypes.MetricDataResult) (float64, float64) {
+	var currentCPUsSum float64
+	var previousCPUsSum float64
+
+	if len(metrics) == 0 {
+		return 0.0, 0.0
+	}
+
+	for _, metric := range metrics {
+		currCPU, _, metricFound := findMetricValue(metric, "cpuQuery", 0)
+		if metricFound {
+			currentCPUsSum = currentCPUsSum + currCPU
+		}
+		prevCPU, _, metricFound := findMetricValue(metric, "cpuQuery", 1)
+		if metricFound {
+			previousCPUsSum = previousCPUsSum + prevCPU
+		}
+	}
+	avgCurrentCPU := currentCPUsSum / float64(len(metrics))
+	avgPreviousCPU := previousCPUsSum / float64(len(metrics))
+
+	cpuDeltaChange := avgCurrentCPU - avgPreviousCPU
+
+	return avgCurrentCPU, cpuDeltaChange
 }
