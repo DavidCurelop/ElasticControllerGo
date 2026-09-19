@@ -181,15 +181,16 @@ func main() {
 			continue
 		}
 
-		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5{
+		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5 {
 			var instancesToTerminate []string
 			instancesToTerminate = append(instancesToTerminate, aws.ToString(instances[0].InstanceId))
 			err := elbService.deRegisterTarget(ctx, tgARN, instancesToTerminate[0])
-			if err != nil{
+			if err != nil {
 				log.Printf("Error deregistering %v from %v", instancesToTerminate[0], tgARN)
 				time.Sleep(errorCooldown)
 				continue
 			}
+			log.Printf("Deregistered instance with ID: %v from %v successfully!", instancesToTerminate[0], tgARN)
 
 			instanceInfo, err := instanceService.TerminateInstances(ctx, instancesToTerminate)
 			if err != nil {
@@ -283,7 +284,7 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 }
 
 func (s *InstanceService) TerminateInstances(ctx context.Context, instanceIds []string) (*ec2.TerminateInstancesOutput, error) {
-	
+
 	terminateInput := &ec2.TerminateInstancesInput{
 		InstanceIds: instanceIds,
 	}
