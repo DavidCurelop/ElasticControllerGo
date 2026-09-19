@@ -182,7 +182,16 @@ func main() {
 		}
 
 		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5{
-			instanceInfo, err := instanceService.TerminateInstances(ctx, instances, 1)
+			var instancesToTerminate []string
+			instancesToTerminate = append(instancesToTerminate, aws.ToString(instances[0].InstanceId))
+			err := elbService.deRegisterTarget(ctx, tgARN, instancesToTerminate[0])
+			if err != nil{
+				log.Printf("Error deregistering %v from %v", instancesToTerminate[0], tgARN)
+				time.Sleep(errorCooldown)
+				continue
+			}
+
+			instanceInfo, err := instanceService.TerminateInstances(ctx, instancesToTerminate)
 			if err != nil {
 				log.Printf("Error starting instance %v", err)
 				continue
@@ -273,18 +282,10 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 	return instances, nil
 }
 
-func (s *InstanceService) TerminateInstances(ctx context.Context, instances []types.Instance, amount int) (*ec2.TerminateInstancesOutput, error) {
-	var instancesID []string
-	if amount > len(instances) || amount < 0 {
-		amount = len(instances)
-	}
-
-	for i := 0; i < amount; i++ {
-		instance := instances[i]
-		instancesID = append(instancesID, aws.ToString(instance.InstanceId))
-	}
+func (s *InstanceService) TerminateInstances(ctx context.Context, instanceIds []string) (*ec2.TerminateInstancesOutput, error) {
+	
 	terminateInput := &ec2.TerminateInstancesInput{
-		InstanceIds: instancesID,
+		InstanceIds: instanceIds,
 	}
 	TerminateOutput, err := s.ec2Client.TerminateInstances(ctx, terminateInput)
 
@@ -293,7 +294,7 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	}
 
 	for _, terminatedInstance := range TerminateOutput.TerminatingInstances {
-		fmt.Printf("Succesfully terminated Instance: %s Status: %s\n", *aws.String(*terminatedInstance.InstanceId), terminatedInstance.CurrentState.Name)
+		fmt.Printf("Succesfully terminated Instance: %s Status: %s\n", aws.ToString(terminatedInstance.InstanceId), terminatedInstance.CurrentState.Name)
 	}
 
 	return TerminateOutput, nil
@@ -383,6 +384,25 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 	//       fmt.Errorf("registering instance %q to target group %q: %w", instanceID, targetGroupARN, err)
 	if err != nil {
 		return fmt.Errorf("registering instance %q to target group %q: %w", aws.ToString(instance.InstanceId), targetGroupARN, err)
+	}
+	return err
+}
+
+func (s *elbService) deRegisterTarget(ctx context.Context, targetGroupARN string, instanceId string) error {
+	// TODO: Step 1 - Build &elasticloadbalancingv2.RegisterTargetsInput
+	deRegisterTargetInput := &elasticloadbalancingv2.DeregisterTargetsInput{
+		TargetGroupArn: aws.String(targetGroupARN),
+		Targets: []elbtypes.TargetDescription{{
+			Id:               &instanceId,
+			AvailabilityZone: nil,
+		}},
+	}
+	// TODO: Step 2 - Call s.elbClient.RegisterTargets(ctx, registerTargetsInput)
+	_, err := s.elbClient.DeregisterTargets(ctx, deRegisterTargetInput)
+	// TODO: Step 3 - Line of sight error handling with storytelling wrapping:
+	//       fmt.Errorf("registering instance %q to target group %q: %w", instanceID, targetGroupARN, err)
+	if err != nil {
+		return fmt.Errorf("deregistering instance %q from target group %q: %w", instanceId, targetGroupARN, err)
 	}
 	return err
 }
