@@ -1,2 +1,6 @@
 .env
 .aws
+.exe
+labsuser.pem
+traffic_generator
+RealTrafficTest.go

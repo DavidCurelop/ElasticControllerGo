@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"time"
@@ -33,6 +34,14 @@ type MetricRecord struct {
 	Value float64
 }
 
+type instanceCreationInput struct {
+	imageID          *string
+	instanceType     types.InstanceType
+	instanceTag      string
+	instanceKeyName  string
+	securityGroupIDs []string
+}
+
 func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookback int) (float64, time.Time, bool) {
 	if len(records) == 0 || lookback < 0 {
 		return 0.0, time.Time{}, false
@@ -50,13 +59,17 @@ func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookba
 
 func main() {
 	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
-	instanceAMI := "ami-0f8a61b66d1accaee"
+	//instanceAMI := "ami-0f8a61b66d1accaee"
+	instanceAMI := "ami-098fa3be973dd6b19"
+
 	instanceTag := "WebServer"
 	instaceType := types.InstanceTypeT2Micro
 	launchCooldown := 2 * time.Minute
 	errorCooldown := 5 * time.Second
 	maxInstances := 5
 	minInstances := 1
+	instnaceKey := "vockey"
+	sgID := []string{"sg-0e41161d4476bb460"}
 
 	// TODO: Step 1 - Load config via config.LoadDefaultConfig(ctx)
 	ctx := context.Background()
@@ -65,6 +78,14 @@ func main() {
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
 		log.Fatalf("AWS config loading failed with error %v", configError)
+	}
+
+	instanceData := &instanceCreationInput{
+		imageID:          aws.String(instanceAMI),
+		instanceType:     instaceType,
+		instanceTag:      instanceTag,
+		instanceKeyName:  instnaceKey,
+		securityGroupIDs: sgID,
 	}
 
 	// Service creation and instantiation
@@ -85,7 +106,9 @@ func main() {
 		cloudwatchClient: cwClient,
 	}
 
-	for {
+	for Loop := 1; true; Loop++ {
+		log.Printf("\nLoop #%v started", Loop)
+
 		//Get instances with the tag WebServer
 		instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
 		log.Printf("Found %d matching instances", len(instances))
@@ -98,7 +121,7 @@ func main() {
 
 		if len(instances) == 0 {
 			log.Printf("No instances found, starting instance and restarting")
-			instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, instaceType, instanceTag)
+			instanceID, err := instanceService.LaunchInstance(ctx, *instanceData)
 			if err != nil {
 				log.Printf("Error starting instance %v %v", instanceID, err)
 				continue
@@ -112,8 +135,14 @@ func main() {
 		//register running instances to TG
 		for i, instance := range instances {
 			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
+			instanceHealthOutput, err := elbService.GetTargetHealth(ctx, tgARN, instance)
+			if err != nil {
+				continue
+			}
 
-			if instance.State.Name == "running" {
+			instanceTargetGroup := instanceHealthOutput.State
+
+			if instance.State.Name == "running" && instanceTargetGroup == elbtypes.TargetHealthStateEnumUnused {
 				elberr := elbService.RegisterTarget(ctx, tgARN, instance)
 				if elberr != nil {
 					log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
@@ -132,48 +161,66 @@ func main() {
 			continue
 		}
 
-		avgCPU, cpuChangeDelta := getavgCPUandchange(metrics)
+		avgCPU, cpuChangeDelta := getMetricaAVGandChange(metrics, "cpuQuery")
+		avgNetIn, NetInChangeDelta := getMetricaAVGandChange(metrics, "networkInQuery")
+		const bytesPerMegaByte = 1024 * 1024
+		avgNetInMB := avgNetIn / bytesPerMegaByte
+		netInChangeDeltaMB := NetInChangeDelta / bytesPerMegaByte
 
-		if (avgCPU > 70 || cpuChangeDelta > 10) && len(instances) < maxInstances {
-			instanceID, err := instanceService.LaunchInstance(ctx, instanceAMI, instaceType, instanceTag)
+		log.Printf("AVG CPU: %v  CPU change: %v", avgCPU, cpuChangeDelta)
+		log.Printf("AVG Net In (MB): %v  Net In change: %v", avgNetInMB, netInChangeDeltaMB)
+
+		if ((avgCPU > 70 || (cpuChangeDelta > 10 && avgCPU > 50)) || avgNetInMB > 10) && len(instances) < maxInstances {
+			instanceID, err := instanceService.LaunchInstance(ctx, *instanceData)
 			if err != nil {
 				log.Printf("Error starting instance %v %v", instanceID, err)
 				continue
 			}
+			log.Printf("Started instance with ID: %v", instanceID)
 			time.Sleep(launchCooldown)
 			continue
 		}
 
-		if avgCPU < 35 && len(instances) > minInstances {
-			_, err := instanceService.TerminateInstances(ctx, instances, 1)
+		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5{
+			instanceInfo, err := instanceService.TerminateInstances(ctx, instances, 1)
 			if err != nil {
 				log.Printf("Error starting instance %v", err)
 				continue
 			}
+			log.Printf("Terminated instance with ID: %v", aws.ToString(instanceInfo.TerminatingInstances[0].InstanceId))
 			time.Sleep(launchCooldown)
 			continue
 		}
-		time.Sleep(1 * time.Minute)
+		log.Printf("Maintaining capacity and sleeping for 30s")
+		time.Sleep(30 * time.Second)
 	}
 
 }
 
-func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, instanceType types.InstanceType, instanceTag string) (string, error) {
+func (s *InstanceService) LaunchInstance(ctx context.Context, instanceCreationInput instanceCreationInput) (string, error) {
 	// TODO: Step 1 - Construct &ec2.RunInstancesInput with explicit, multi-line named fields:
 	//       - ImageId (use aws.String)
 	//       - InstanceType (the types.InstanceType passed in)
 	//       - MinCount & MaxCount (use aws.Int32)
 
+	rawUserDataScript := `#!/bin/bash
+echo "<h1>Hello World from $(hostname -f)</h1>" | sudo tee /var/www/html/index.html
+`
+	encodedUserData := base64.StdEncoding.EncodeToString([]byte(rawUserDataScript))
+
 	runInstanceInput := &ec2.RunInstancesInput{
-		ImageId:      &imageID,
-		InstanceType: instanceType,
-		MinCount:     aws.Int32(1),
-		MaxCount:     aws.Int32(1),
-		Monitoring:   &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
+		ImageId:          instanceCreationInput.imageID,
+		InstanceType:     instanceCreationInput.instanceType,
+		MinCount:         aws.Int32(1),
+		MaxCount:         aws.Int32(1),
+		KeyName:          &instanceCreationInput.instanceKeyName,
+		SecurityGroupIds: instanceCreationInput.securityGroupIDs,
+		Monitoring:       &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
+		UserData:         &encodedUserData,
 		TagSpecifications: []types.TagSpecification{
 			{
 				ResourceType: types.ResourceTypeInstance,
-				Tags:         []types.Tag{{Key: aws.String("Name"), Value: &instanceTag}},
+				Tags:         []types.Tag{{Key: aws.String("Name"), Value: &instanceCreationInput.instanceTag}},
 			},
 		},
 	}
@@ -185,11 +232,11 @@ func (s *InstanceService) LaunchInstance(ctx context.Context, imageID string, in
 	// TODO: Step 3 - Check error immediately with early return ("Line of sight").
 	//       Wrap the error using: fmt.Errorf("launching EC2 instance with AMI %q: %w", imageID, err)
 	if err != nil {
-		return "", fmt.Errorf("launching EC2 instance with AMI %q: %w", imageID, err)
+		return "", fmt.Errorf("launching EC2 instance with AMI %q: %w", aws.ToString(instanceCreationInput.imageID), err)
 	}
 
 	if len(runInstancesOutput.Instances) == 0 {
-		return "", fmt.Errorf("no %q instance created", imageID)
+		return "", fmt.Errorf("no %q instance created", aws.ToString(instanceCreationInput.imageID))
 	}
 
 	// TODO: Step 4 - Inspect the returned reservation output to extract and return the instance ID string.
@@ -293,6 +340,19 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 						},
 					},
 				}},
+			{Id: aws.String("networkInQuery"),
+				MetricStat: &cwtypes.MetricStat{
+					Period: aws.Int32(300),
+					Stat:   aws.String("Average"),
+					Metric: &cwtypes.Metric{
+						Namespace:  aws.String("AWS/EC2"),
+						MetricName: aws.String("NetworkIn"),
+						Dimensions: []cwtypes.Dimension{{
+							Name:  aws.String("InstanceId"),
+							Value: aws.String(instanceID)},
+						},
+					},
+				}},
 		},
 	}
 
@@ -382,7 +442,7 @@ func (s *elbService) allInstancesHealthy(ctx context.Context, targetGroupARN str
 	return true, nil
 }
 
-func getavgCPUandchange(metrics [][]cwtypes.MetricDataResult) (float64, float64) {
+func getMetricaAVGandChange(metrics [][]cwtypes.MetricDataResult, metricID string) (float64, float64) {
 	var currentCPUsSum float64
 	var previousCPUsSum float64
 
@@ -391,11 +451,11 @@ func getavgCPUandchange(metrics [][]cwtypes.MetricDataResult) (float64, float64)
 	}
 
 	for _, metric := range metrics {
-		currCPU, _, metricFound := findMetricValue(metric, "cpuQuery", 0)
+		currCPU, _, metricFound := findMetricValue(metric, metricID, 0)
 		if metricFound {
 			currentCPUsSum = currentCPUsSum + currCPU
 		}
-		prevCPU, _, metricFound := findMetricValue(metric, "cpuQuery", 1)
+		prevCPU, _, metricFound := findMetricValue(metric, metricID, 1)
 		if metricFound {
 			previousCPUsSum = previousCPUsSum + prevCPU
 		}
