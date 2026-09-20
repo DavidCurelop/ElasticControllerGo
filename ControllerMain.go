@@ -76,7 +76,7 @@ func main() {
 
 	instanceTag := "WebServer"
 	instaceType := types.InstanceTypeT2Micro
-	launchCooldown := 2 * time.Minute
+
 	errorCooldown := 5 * time.Second
 	maxInstances := 5
 	minInstances := 1
@@ -133,20 +133,31 @@ func main() {
 
 		if len(instances) == 0 {
 			log.Printf("No instances found, starting instance and restarting")
-			instanceID, err := instanceService.LaunchInstance(ctx, *instanceData)
+			instance, err := instanceService.LaunchInstance(ctx, *instanceData)
 			if err != nil {
-				log.Printf("Error starting instance %v %v", instanceID, err)
+				log.Printf("Error starting instance %v %v", aws.ToString(instance.InstanceId), err)
 				continue
 			}
 
-			log.Printf("Started instance %v succesfully", instanceID)
+			log.Printf("Started instance %v succesfully", aws.ToString(instance.InstanceId))
 
-			time.Sleep(launchCooldown)
+			instanceService.WaitForInstanceRunning(ctx, *instance.InstanceId)
+			log.Printf("Instance %v is %v", instance.InstanceId, instance.State)
+			elberr := elbService.RegisterTarget(ctx, tgARN, instance)
+			if elberr != nil {
+				log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
+				time.Sleep(errorCooldown)
+				continue
+			}
+			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
+
+			elbService.WaitForTargetStateHealth(ctx, tgARN, instance, elbtypes.TargetHealthStateEnumHealthy)
+
 			continue
 		}
 		//register running instances to TG
 		for i, instance := range instances {
-			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, *aws.String(string(instance.State.Name)))
+			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, instance.State.Name)
 			instanceHealthOutput, err := elbService.GetTargetHealth(ctx, tgARN, instance)
 			if err != nil {
 				continue
@@ -183,34 +194,34 @@ func main() {
 		log.Printf("AVG Net In (MB): %v  Net In change: %v", avgNetInMB, netInChangeDeltaMB)
 
 		if ((avgCPU > 70 || (cpuChangeDelta > 10 && avgCPU > 50)) || avgNetInMB > 10) && len(instances) < maxInstances {
-			instanceID, err := instanceService.LaunchInstance(ctx, *instanceData)
+			instance, err := instanceService.LaunchInstance(ctx, *instanceData)
 			if err != nil {
-				log.Printf("Error starting instance %v %v", instanceID, err)
+				log.Printf("Error starting instance %v %v", aws.ToString(instance.InstanceId), err)
 				continue
 			}
-			log.Printf("Started instance with ID: %v", instanceID)
-			time.Sleep(launchCooldown)
+			log.Printf("Started instance with ID: %v", aws.ToString(instance.InstanceId))
+			elbService.WaitForTargetStateHealth(ctx, tgARN, instance, elbtypes.TargetHealthStateEnumHealthy)
 			continue
 		}
 
 		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5 {
-			var instancesToTerminate []string
-			instancesToTerminate = append(instancesToTerminate, aws.ToString(instances[0].InstanceId))
+			var instancesToTerminate []types.Instance
+			instancesToTerminate = append(instancesToTerminate, instances[0])
 			err := elbService.deRegisterTarget(ctx, tgARN, instancesToTerminate[0])
 			if err != nil {
 				log.Printf("Error deregistering %v from %v", instancesToTerminate[0], tgARN)
 				time.Sleep(errorCooldown)
 				continue
 			}
-			log.Printf("Deregistered instance with ID: %v from %v successfully!", instancesToTerminate[0], tgARN)
+			log.Printf("Deregistered instance with ID: %v from %v successfully!", aws.ToString(instancesToTerminate[0].InstanceId), tgARN)
 
+			elbService.WaitForTargetStateHealth(ctx, tgARN, instancesToTerminate[0], elbtypes.TargetHealthStateEnumUnused)
 			instanceInfo, err := instanceService.TerminateInstances(ctx, instancesToTerminate)
 			if err != nil {
 				log.Printf("Error starting instance %v", err)
 				continue
 			}
 			log.Printf("Terminated instance with ID: %v", aws.ToString(instanceInfo.TerminatingInstances[0].InstanceId))
-			time.Sleep(launchCooldown)
 			continue
 		}
 		log.Printf("Maintaining capacity and sleeping for 60s")
@@ -219,7 +230,7 @@ func main() {
 
 }
 
-func (s *InstanceService) LaunchInstance(ctx context.Context, instanceCreationInput instanceCreationInput) (string, error) {
+func (s *InstanceService) LaunchInstance(ctx context.Context, instanceCreationInput instanceCreationInput) (types.Instance, error) {
 	// TODO: Step 1 - Construct &ec2.RunInstancesInput with explicit, multi-line named fields:
 	//       - ImageId (use aws.String)
 	//       - InstanceType (the types.InstanceType passed in)
@@ -254,15 +265,15 @@ echo "<h1>Hello World from $(hostname -f)</h1>" | sudo tee /var/www/html/index.h
 	// TODO: Step 3 - Check error immediately with early return ("Line of sight").
 	//       Wrap the error using: fmt.Errorf("launching EC2 instance with AMI %q: %w", imageID, err)
 	if err != nil {
-		return "", fmt.Errorf("launching EC2 instance with AMI %q: %w", aws.ToString(instanceCreationInput.imageID), err)
+		return types.Instance{}, fmt.Errorf("launching EC2 instance with AMI %q: %w", aws.ToString(instanceCreationInput.imageID), err)
 	}
 
 	if len(runInstancesOutput.Instances) == 0 {
-		return "", fmt.Errorf("no %q instance created", aws.ToString(instanceCreationInput.imageID))
+		return types.Instance{}, fmt.Errorf("no %q instance created", aws.ToString(instanceCreationInput.imageID))
 	}
 
 	// TODO: Step 4 - Inspect the returned reservation output to extract and return the instance ID string.
-	return aws.ToString(runInstancesOutput.Instances[0].InstanceId), nil
+	return runInstancesOutput.Instances[0], nil
 }
 
 func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string, tagValue string) ([]types.Instance, error) {
@@ -295,7 +306,11 @@ func (s *InstanceService) GetInstancesByTag(ctx context.Context, tagName string,
 	return instances, nil
 }
 
-func (s *InstanceService) TerminateInstances(ctx context.Context, instanceIds []string) (*ec2.TerminateInstancesOutput, error) {
+func (s *InstanceService) TerminateInstances(ctx context.Context, instances []types.Instance) (*ec2.TerminateInstancesOutput, error) {
+	var instanceIds []string
+	for _, instance := range instances {
+		instanceIds = append(instanceIds, *instance.InstanceId)
+	}
 
 	terminateInput := &ec2.TerminateInstancesInput{
 		InstanceIds: instanceIds,
@@ -401,12 +416,12 @@ func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, 
 	return err
 }
 
-func (s *elbService) deRegisterTarget(ctx context.Context, targetGroupARN string, instanceId string) error {
+func (s *elbService) deRegisterTarget(ctx context.Context, targetGroupARN string, instance types.Instance) error {
 	// TODO: Step 1 - Build &elasticloadbalancingv2.RegisterTargetsInput
 	deRegisterTargetInput := &elasticloadbalancingv2.DeregisterTargetsInput{
 		TargetGroupArn: aws.String(targetGroupARN),
 		Targets: []elbtypes.TargetDescription{{
-			Id:               &instanceId,
+			Id:               instance.InstanceId,
 			AvailabilityZone: nil,
 		}},
 	}
@@ -415,7 +430,7 @@ func (s *elbService) deRegisterTarget(ctx context.Context, targetGroupARN string
 	// TODO: Step 3 - Line of sight error handling with storytelling wrapping:
 	//       fmt.Errorf("registering instance %q to target group %q: %w", instanceID, targetGroupARN, err)
 	if err != nil {
-		return fmt.Errorf("deregistering instance %q from target group %q: %w", instanceId, targetGroupARN, err)
+		return fmt.Errorf("deregistering instance %q from target group %q: %w", *instance.InstanceId, targetGroupARN, err)
 	}
 	return err
 }
@@ -499,4 +514,80 @@ func getMetricaAVGandChange(metrics [][]cwtypes.MetricDataResult, metricID strin
 	cpuDeltaChange := avgCurrentCPU - avgPreviousCPU
 
 	return avgCurrentCPU, cpuDeltaChange
+}
+
+func (s *elbService) WaitForTargetStateHealth(ctx context.Context, targetGroupARN string, instance types.Instance, desiredState elbtypes.TargetHealthStateEnum) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("There was an error with the context %w", err)
+		}
+		// TODO: Step 2 - Call s.GetTargetHealth(ctx, targetGroupARN, instance)
+		health, err := s.GetTargetHealth(ctx, targetGroupARN, instance)
+		if err != nil {
+			return fmt.Errorf("There was an error getting target %v health %w", aws.ToString(instance.InstanceId), err)
+		}
+
+		// TODO: Step 3 - If health.State == desiredState, return nil (success!)
+		if health.State == desiredState {
+			return nil
+		}
+		// TODO: Step 1 - Define a polling loop with an interval (e.g., time.Sleep(5 * time.Second))
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// IsInstanceRunning queries EC2 to check whether an instance is in the "running" state.
+func (s *InstanceService) IsInstanceRunning(ctx context.Context, instanceID string) (bool, error) {
+	// Step 1: Explicit struct initialization targeting the instance ID.
+	// IncludeAllInstances ensures EC2 returns status even when the instance is pending or stopped.
+	describeInput := &ec2.DescribeInstanceStatusInput{
+		InstanceIds:         []string{instanceID},
+		IncludeAllInstances: aws.Bool(true),
+	}
+
+	// Step 2: Query the EC2 API via the injected ec2Client.
+	describeOutput, err := s.ec2Client.DescribeInstanceStatus(ctx, describeInput)
+	if err != nil {
+		return false, fmt.Errorf("describing instance status for %q: %w", instanceID, err)
+	}
+
+	// Step 3: If no status records are returned, the instance is not yet registered in EC2 status.
+	if len(describeOutput.InstanceStatuses) == 0 {
+		return false, nil
+	}
+
+	// Step 4: Defensively check pointer safety before dereferencing nested struct fields.
+	instanceStatus := describeOutput.InstanceStatuses[0]
+	if instanceStatus.InstanceState == nil {
+		return false, fmt.Errorf("instance state was nil for %q", instanceID)
+	}
+
+	// Step 5: Evaluate whether the lifecycle state matches running.
+	isRunning := instanceStatus.InstanceState.Name == types.InstanceStateNameRunning
+	return isRunning, nil
+}
+
+// WaitForInstanceRunning polls EC2 until the instance reaches the "running" state or ctx is cancelled.
+func (s *InstanceService) WaitForInstanceRunning(ctx context.Context, instanceID string) error {
+	pollInterval := 5 * time.Second
+	for {
+		// Step 1: Guard against context timeouts or cancellations.
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context cancelled while waiting for instance %q to run: %w", instanceID, err)
+		}
+
+		// Step 2: Poll instance status using IsInstanceRunning.
+		isRunning, err := s.IsInstanceRunning(ctx, instanceID)
+		if err != nil {
+			return fmt.Errorf("polling running state for instance %q: %w", instanceID, err)
+		}
+
+		// Step 3: Happy path exit when desired running state is achieved.
+		if isRunning {
+			return nil
+		}
+
+		// Step 4: Wait for the next poll interval before checking again.
+		time.Sleep(pollInterval)
+	}
 }
