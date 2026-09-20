@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -58,6 +60,16 @@ func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookba
 }
 
 func main() {
+	logFile, err := os.OpenFile("controller.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("opening controller log file: %v", err)
+	}
+	defer logFile.Close()
+	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+	// TODO: Choose destination:
+	// Option A (File only): log.SetOutput(logFile)
+	// Option B (Both file and console): log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+
 	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
 	//instanceAMI := "ami-0f8a61b66d1accaee"
 	instanceAMI := "ami-098fa3be973dd6b19"
@@ -201,8 +213,8 @@ func main() {
 			time.Sleep(launchCooldown)
 			continue
 		}
-		log.Printf("Maintaining capacity and sleeping for 30s")
-		time.Sleep(30 * time.Second)
+		log.Printf("Maintaining capacity and sleeping for 60s")
+		time.Sleep(60 * time.Second)
 	}
 
 }
