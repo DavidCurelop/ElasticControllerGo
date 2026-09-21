@@ -82,6 +82,13 @@ func main() {
 	minInstances := 1
 	instnaceKey := "vockey"
 	sgID := []string{"sg-0e41161d4476bb460"}
+	lookbackWindow := 2 * time.Minute
+	AVGCPUIncreaseThreshold := 70
+	AVGCPUDecreaseThreshold := 35
+	CPUChangeIncreaseThreshold := 10
+	AVGNetInIncreaseThreshold := 20
+	AVGNetInDecreaseThreshold := 5
+	var lastScaleTime time.Time
 
 	// TODO: Step 1 - Load config via config.LoadDefaultConfig(ctx)
 	ctx := context.Background()
@@ -132,52 +139,49 @@ func main() {
 		}
 
 		if len(instances) == 0 {
-			log.Printf("No instances found, starting instance and restarting")
-			instance, err := instanceService.LaunchInstance(ctx, *instanceData)
-			if err != nil {
-				log.Printf("Error starting instance %v %v", aws.ToString(instance.InstanceId), err)
-				continue
-			}
-
-			log.Printf("Started instance %v succesfully", aws.ToString(instance.InstanceId))
-
-			instanceService.WaitForInstanceRunning(ctx, *instance.InstanceId)
-			log.Printf("Instance %v is %v", instance.InstanceId, instance.State)
-			elberr := elbService.RegisterTarget(ctx, tgARN, instance)
-			if elberr != nil {
-				log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
+			log.Printf("INCREASE_CAPACITY, No instances currently running")
+			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, tgARN)
+			if capIncreaseErr != nil {
+				log.Printf("Error while increasing capacity: %v", capIncreaseErr)
 				time.Sleep(errorCooldown)
 				continue
 			}
-			fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-
-			elbService.WaitForTargetStateHealth(ctx, tgARN, instance, elbtypes.TargetHealthStateEnumHealthy)
-
+			lastScaleTime = time.Now()
+			time.Sleep(60 * time.Second)
 			continue
 		}
 		//register running instances to TG
+
 		for i, instance := range instances {
-			fmt.Printf("%v: Instance %v of type %v and has state %v\n", i, aws.ToString(instance.InstanceId), instance.InstanceType, instance.State.Name)
 			instanceHealthOutput, err := elbService.GetTargetHealth(ctx, tgARN, instance)
 			if err != nil {
 				continue
 			}
+			log.Printf("%v: Instance %v of type %v, has state: %v and TG state is: %v\n", i+1, aws.ToString(instance.InstanceId), instance.InstanceType, instance.State.Name, instanceHealthOutput.State)
 
-			instanceTargetGroup := instanceHealthOutput.State
+			/*
+				instanceTargetGroup := instanceHealthOutput.State
 
-			if instance.State.Name == "running" && instanceTargetGroup == elbtypes.TargetHealthStateEnumUnused {
-				elberr := elbService.RegisterTarget(ctx, tgARN, instance)
-				if elberr != nil {
-					log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
-					time.Sleep(errorCooldown)
-					continue
-				}
-				fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
-			}
+				if instance.State.Name == "running" && instanceTargetGroup == elbtypes.TargetHealthStateEnumUnused {
+					elberr := elbService.RegisterTarget(ctx, tgARN, instance)
+					if elberr != nil {
+						log.Printf("Error assigning %v to TG: %s\n", aws.ToString(instance.InstanceId), elberr)
+						time.Sleep(errorCooldown)
+						continue
+					}
+					fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
+				}*/
+		}
+
+		if time.Since(lastScaleTime) < lookbackWindow {
+			remaining := lookbackWindow - time.Since(lastScaleTime)
+			log.Printf("MAINTAIN_CAPACITY, Reason: In cooldown (%.0fs remaining)", remaining.Seconds())
+			time.Sleep(60 * time.Second)
+			continue
 		}
 
 		//Get metrics for instances
-		metrics, err := cwService.GetAllMetrics(ctx, instances, 2*time.Minute)
+		metrics, err := cwService.GetAllMetrics(ctx, instances, lookbackWindow)
 		if err != nil {
 			log.Printf("Error loading metrics %v", err)
 			time.Sleep(errorCooldown)
@@ -190,41 +194,71 @@ func main() {
 		avgNetInMB := avgNetIn / bytesPerMegaByte
 		netInChangeDeltaMB := NetInChangeDelta / bytesPerMegaByte
 
+		log.Printf("Lookback window: %v, Period: 1min, Metrics:", lookbackWindow)
 		log.Printf("AVG CPU: %v  CPU change: %v", avgCPU, cpuChangeDelta)
 		log.Printf("AVG Net In (MB): %v  Net In change: %v", avgNetInMB, netInChangeDeltaMB)
+		/*
 
-		if ((avgCPU > 70 || (cpuChangeDelta > 10 && avgCPU > 50)) || avgNetInMB > 10) && len(instances) < maxInstances {
-			instance, err := instanceService.LaunchInstance(ctx, *instanceData)
-			if err != nil {
-				log.Printf("Error starting instance %v %v", aws.ToString(instance.InstanceId), err)
-				continue
-			}
-			log.Printf("Started instance with ID: %v", aws.ToString(instance.InstanceId))
-			elbService.WaitForTargetStateHealth(ctx, tgARN, instance, elbtypes.TargetHealthStateEnumHealthy)
-			continue
+
+		   len(instances) == maxInstances:
+		   maintianReason = "Instances are already at max capacity"
+		*/
+
+		var increaseReason string
+		capacityHeadroom := len(instances) < maxInstances
+		switch {
+		case avgCPU > float64(AVGCPUIncreaseThreshold):
+			increaseReason = fmt.Sprintf("Average CPU is > %v%%, currently: %v", AVGCPUIncreaseThreshold, avgCPU)
+		case cpuChangeDelta > float64(CPUChangeIncreaseThreshold) && avgCPU > 50:
+			increaseReason = fmt.Sprintf("Average CPU is > 50%%,currently: %v AND CPU usage change was: %v > %v", avgCPU, cpuChangeDelta, CPUChangeIncreaseThreshold)
+		case avgNetInMB > float64(AVGNetInIncreaseThreshold):
+			increaseReason = fmt.Sprintf("Average NetIn is > %vmb, currently: %v", AVGNetInIncreaseThreshold, avgNetInMB)
 		}
 
-		if avgCPU < 35 && len(instances) > minInstances && avgNetInMB < 5 {
-			var instancesToTerminate []types.Instance
-			instancesToTerminate = append(instancesToTerminate, instances[0])
-			err := elbService.deRegisterTarget(ctx, tgARN, instancesToTerminate[0])
-			if err != nil {
-				log.Printf("Error deregistering %v from %v", instancesToTerminate[0], tgARN)
+		if capacityHeadroom && increaseReason != "" {
+			log.Printf("INCREASE_CAPACITY, %v", increaseReason)
+			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, tgARN)
+			if capIncreaseErr != nil {
+				log.Printf("Error while increasing capacity: %v", capIncreaseErr)
 				time.Sleep(errorCooldown)
 				continue
 			}
-			log.Printf("Deregistered instance with ID: %v from %v successfully!", aws.ToString(instancesToTerminate[0].InstanceId), tgARN)
-
-			elbService.WaitForTargetStateHealth(ctx, tgARN, instancesToTerminate[0], elbtypes.TargetHealthStateEnumUnused)
-			instanceInfo, err := instanceService.TerminateInstances(ctx, instancesToTerminate)
-			if err != nil {
-				log.Printf("Error starting instance %v", err)
-				continue
-			}
-			log.Printf("Terminated instance with ID: %v", aws.ToString(instanceInfo.TerminatingInstances[0].InstanceId))
+			lastScaleTime = time.Now()
+			time.Sleep(60 * time.Second)
 			continue
 		}
-		log.Printf("Maintaining capacity and sleeping for 60s")
+
+		var decreaseReason string
+		capacityAboveMin := len(instances) > minInstances
+		switch {
+		case avgCPU < float64(AVGCPUDecreaseThreshold) && avgNetInMB < float64(AVGNetInDecreaseThreshold):
+			decreaseReason = fmt.Sprintf("Average CPU is < %v%%, currently: %v AND Average NetIn is < %vmb, currently: %v", AVGCPUDecreaseThreshold, avgCPU, AVGNetInDecreaseThreshold, avgNetInMB)
+		}
+
+		if capacityAboveMin && decreaseReason != "" {
+			log.Printf("REDUCE_CAPACITY, %v", decreaseReason)
+			err := REDUCE_CAPACITY(ctx, instanceService, elbService, instances, tgARN, 1)
+			if err != nil {
+				log.Printf("Error while reducing capacity: %v", err)
+				time.Sleep(errorCooldown)
+				continue
+			}
+			lastScaleTime = time.Now()
+			time.Sleep(60 * time.Second)
+			continue
+		}
+		var maintianReason string
+
+		switch {
+		case !capacityHeadroom && increaseReason != "":
+			maintianReason = fmt.Sprintf("Scale-up desired (%s) but capped at max (%d)", increaseReason, maxInstances)
+		case !capacityAboveMin && decreaseReason != "":
+			maintianReason = fmt.Sprintf("Scale-down desired (%s) but protected at min (%d)", decreaseReason, minInstances)
+		default:
+			maintianReason = fmt.Sprintf("Metrics in steady state (CPU: %.1f%%, NetIn: %.2f MB/min)", avgCPU, avgNetInMB)
+		}
+
+		log.Printf("MAINTAIN_CAPACITY, Reason: %v", maintianReason)
 		time.Sleep(60 * time.Second)
 	}
 
@@ -371,7 +405,7 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 				}},
 			{Id: aws.String("networkInQuery"),
 				MetricStat: &cwtypes.MetricStat{
-					Period: aws.Int32(300),
+					Period: aws.Int32(60),
 					Stat:   aws.String("Average"),
 					Metric: &cwtypes.Metric{
 						Namespace:  aws.String("AWS/EC2"),
@@ -590,4 +624,78 @@ func (s *InstanceService) WaitForInstanceRunning(ctx context.Context, instanceID
 		// Step 4: Wait for the next poll interval before checking again.
 		time.Sleep(pollInterval)
 	}
+}
+
+func INCREASE_CAPACITY(ctx context.Context, instanceService *InstanceService, elbService *elbService, instanceData *instanceCreationInput, tgARN string) error {
+	instance, err := instanceService.LaunchInstance(ctx, *instanceData)
+	if err != nil {
+		return fmt.Errorf("Error starting instance %v %w. Trying again", aws.ToString(instance.InstanceId), err)
+	}
+
+	log.Printf("Started instance %v succesfully", aws.ToString(instance.InstanceId))
+
+	time.Sleep(5 * time.Second)
+
+	errWait := instanceService.WaitForInstanceRunning(ctx, aws.ToString(instance.InstanceId))
+	if errWait != nil {
+		return fmt.Errorf("Error waiting for instance %v to reach running state: %v", aws.ToString(instance.InstanceId), errWait)
+
+	}
+	log.Printf("Instance %v is %v", aws.ToString(instance.InstanceId), instance.State.Name)
+
+	err = elbService.RegisterTarget(ctx, tgARN, instance)
+
+	if err != nil {
+		return fmt.Errorf("Error assigning %v to TG: %s", aws.ToString(instance.InstanceId), err)
+	}
+
+	fmt.Printf("Successfully added %v to TG\n", aws.ToString(instance.InstanceId))
+
+	err = elbService.WaitForTargetStateHealth(ctx, tgARN, instance, elbtypes.TargetHealthStateEnumHealthy)
+	if err != nil {
+		return fmt.Errorf("Error waiting for instance %v health %v", aws.ToString(instance.InstanceId), err)
+	}
+
+	log.Printf("Instance %v is now running and registered to TG %v", aws.ToString(instance.InstanceId), tgARN)
+
+	return nil
+}
+
+func REDUCE_CAPACITY(ctx context.Context, instanceService *InstanceService, elbService *elbService, instances []types.Instance, tgARN string, amount int) error {
+	var instancesToTerminate []types.Instance
+	var instancesToTerminateID []string
+	for i := 0; i < amount; i++ {
+		instancesToTerminate = append(instancesToTerminate, instances[i])
+		instancesToTerminateID = append(instancesToTerminateID, *instances[i].InstanceId)
+		err := elbService.deRegisterTarget(ctx, tgARN, instancesToTerminate[i])
+		if err != nil {
+			return fmt.Errorf("Error deregistering %v from %v", instancesToTerminate[i], tgARN)
+
+		}
+		log.Printf("Deregistered instance with ID: %v from %v successfully!", aws.ToString(instancesToTerminate[i].InstanceId), tgARN)
+
+	}
+
+	elbService.WaitForTargetStateHealth(ctx, tgARN, instancesToTerminate[len(instancesToTerminate)-1], elbtypes.TargetHealthStateEnumUnused)
+
+	instanceInfo, err := instanceService.TerminateInstances(ctx, instancesToTerminate)
+	if err != nil {
+		return fmt.Errorf("Error terminating instance %w", err)
+
+	}
+	describeInstancesInput := &ec2.DescribeInstancesInput{
+		InstanceIds: instancesToTerminateID,
+	}
+
+	waiter := ec2.NewInstanceTerminatedWaiter(instanceService.ec2Client)
+
+	err = waiter.Wait(ctx, describeInstancesInput, 3*time.Minute)
+	if err != nil {
+		return fmt.Errorf("Error waiting for instance to terminate %w", err)
+	}
+
+	for _, instanceState := range instanceInfo.TerminatingInstances {
+		log.Printf("Terminated instance with ID: %v", aws.ToString(instanceState.InstanceId))
+	}
+	return nil
 }

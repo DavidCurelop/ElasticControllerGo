@@ -2,8 +2,10 @@
 .aws
 *.exe
 *.pem
+*.png
 traffic_generator
 RealTrafficTest.go
 *.csv
 *.xlsx
 controller.log
+realtraffic
