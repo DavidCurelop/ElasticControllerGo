@@ -113,7 +113,7 @@ The execution identity requires IAM permissions for:
 - **CloudWatch**: `cloudwatch:GetMetricData`
 
 ### 3. AWS Credentials
-Configure your AWS credentials using the standard credential chain:
+Configure your AWS credentials using the standard credential chain (If running locally and not on an EC2 instance):
 ```powershell
 # Option A: AWS CLI
 aws configure
@@ -197,18 +197,3 @@ Experimental benchmarks demonstrate controller responsiveness under load:
 
 ---
 
-## Clean Architecture & Idiomatic Go Patterns
-
-This project adheres to strict Go cloud engineering best practices:
-
-- **Line of Sight Principle**: Happy path execution stays aligned to the left margin; errors are caught early with immediate returns.
-- **Storytelling Errors**: All AWS SDK errors are contextualized using `fmt.Errorf("action description on resource: %w", err)`.
-- **Explicit Named Initializers**: All AWS SDK request structs explicitly specify field names across multiple lines for auditability and diff clarity.
-- **Pointer Safety**: Safe dereferencing using `aws.String()`, `aws.ToString()`, `aws.Time()`, and defensive nil checks on SDK output structures.
-- **Context Propagation**: Every AWS API call takes a top-level `context.Context` to support timeouts, cancellation, and trace propagation.
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
