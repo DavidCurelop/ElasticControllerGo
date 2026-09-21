@@ -13,7 +13,6 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 
 - [System Architecture](#-system-architecture)
 - [Key Features](#-key-features)
-- [Auto-Scaling Decision Engine](#-auto-scaling-decision-engine)
 - [Instance Lifecycle & Safety Mechanisms](#-instance-lifecycle--safety-mechanisms)
 - [Repository Structure](#-repository-structure)
 - [Prerequisites & AWS Setup](#-prerequisites--aws-setup)
@@ -21,7 +20,6 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 - [Build and Execution](#-build-and-execution)
 - [Load Testing & Benchmarking](#-load-testing--benchmarking)
 - [Experimental Results](#-experimental-results)
-- [Clean Architecture & Idiomatic Go Patterns](#-clean-architecture--idiomatic-go-patterns)
 
 ---
 
@@ -113,7 +111,7 @@ The execution identity requires IAM permissions for:
 - **CloudWatch**: `cloudwatch:GetMetricData`
 
 ### 3. AWS Credentials
-Configure your AWS credentials using the standard credential chain:
+Configure your AWS credentials using the standard credential chain (If running locally and not on an EC2 instance):
 ```powershell
 # Option A: AWS CLI
 aws configure
@@ -197,18 +195,3 @@ Experimental benchmarks demonstrate controller responsiveness under load:
 
 ---
 
-## Clean Architecture & Idiomatic Go Patterns
-
-This project adheres to strict Go cloud engineering best practices:
-
-- **Line of Sight Principle**: Happy path execution stays aligned to the left margin; errors are caught early with immediate returns.
-- **Storytelling Errors**: All AWS SDK errors are contextualized using `fmt.Errorf("action description on resource: %w", err)`.
-- **Explicit Named Initializers**: All AWS SDK request structs explicitly specify field names across multiple lines for auditability and diff clarity.
-- **Pointer Safety**: Safe dereferencing using `aws.String()`, `aws.ToString()`, `aws.Time()`, and defensive nil checks on SDK output structures.
-- **Context Propagation**: Every AWS API call takes a top-level `context.Context` to support timeouts, cancellation, and trace propagation.
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
