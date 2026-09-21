@@ -1,0 +1,267 @@
+2026/09/21 13:27:34 
+Loop #1 started
+2026/09/21 13:27:34 Found 1 matching instances
+2026/09/21 13:27:34 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:27:35 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:27:35 AVG CPU: 1.883333333333333  CPU change: 0.08336333283334141
+2026/09/21 13:27:35 AVG Net In (MB): 0.0021209716796875  Net In change: -8.58306884765625e-05
+2026/09/21 13:27:35 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 1.883333333333333 AND Average NetIn is < 5mb, currently: 0.0021209716796875) but protected at min (1)
+2026/09/21 13:28:35 
+Loop #2 started
+2026/09/21 13:28:35 Found 1 matching instances
+2026/09/21 13:28:35 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:28:35 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:28:35 AVG CPU: 1.7833630560509344  CPU change: -0.09997027728239871
+2026/09/21 13:28:35 AVG Net In (MB): 0.6840171813964844  Net In change: 0.6818962097167969
+2026/09/21 13:28:35 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 1.7833630560509344 AND Average NetIn is < 5mb, currently: 0.6840171813964844) but protected at min (1)
+2026/09/21 13:29:35 
+Loop #3 started
+2026/09/21 13:29:35 Found 1 matching instances
+2026/09/21 13:29:35 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:29:36 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:29:36 AVG CPU: 3.016616389726838  CPU change: 1.2332533336759035
+2026/09/21 13:29:36 AVG Net In (MB): 1.7504653930664062  Net In change: 1.0664482116699219
+2026/09/21 13:29:36 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.016616389726838 AND Average NetIn is < 5mb, currently: 1.7504653930664062) but protected at min (1)
+2026/09/21 13:30:36 
+Loop #4 started
+2026/09/21 13:30:36 Found 1 matching instances
+2026/09/21 13:30:36 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:30:37 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:30:37 AVG CPU: 3.7833333333333328  CPU change: 0.7667169436064949
+2026/09/21 13:30:37 AVG Net In (MB): 1.945699691772461  Net In change: 0.1952342987060547
+2026/09/21 13:30:37 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.7833333333333328 AND Average NetIn is < 5mb, currently: 1.945699691772461) but protected at min (1)
+2026/09/21 13:31:37 
+Loop #5 started
+2026/09/21 13:31:37 Found 1 matching instances
+2026/09/21 13:31:37 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:31:37 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:31:37 AVG CPU: 3.9333333333333327  CPU change: 0.1499999999999999
+2026/09/21 13:31:37 AVG Net In (MB): 1.9123172760009766  Net In change: -0.033382415771484375
+2026/09/21 13:31:37 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.9333333333333327 AND Average NetIn is < 5mb, currently: 1.9123172760009766) but protected at min (1)
+2026/09/21 13:32:37 
+Loop #6 started
+2026/09/21 13:32:38 Found 1 matching instances
+2026/09/21 13:32:38 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:32:39 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:32:39 AVG CPU: 3.916666666666667  CPU change: -0.01666666666666572
+2026/09/21 13:32:39 AVG Net In (MB): 1.945211410522461  Net In change: 0.032894134521484375
+2026/09/21 13:32:39 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.916666666666667 AND Average NetIn is < 5mb, currently: 1.945211410522461) but protected at min (1)
+2026/09/21 13:33:39 
+Loop #7 started
+2026/09/21 13:33:39 Found 1 matching instances
+2026/09/21 13:33:39 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:33:39 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:33:39 AVG CPU: 3.982005998000666  CPU change: 0.06533933133399916
+2026/09/21 13:33:39 AVG Net In (MB): 1.9121818542480469  Net In change: -0.03302955627441406
+2026/09/21 13:33:39 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.982005998000666 AND Average NetIn is < 5mb, currently: 1.9121818542480469) but protected at min (1)
+2026/09/21 13:34:39 
+Loop #8 started
+2026/09/21 13:34:40 Found 1 matching instances
+2026/09/21 13:34:40 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:34:40 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:34:40 AVG CPU: 3.8346754697477445  CPU change: -0.1473305282529216
+2026/09/21 13:34:40 AVG Net In (MB): 1.9448013305664062  Net In change: 0.032619476318359375
+2026/09/21 13:34:40 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.8346754697477445 AND Average NetIn is < 5mb, currently: 1.9448013305664062) but protected at min (1)
+2026/09/21 13:35:40 
+Loop #9 started
+2026/09/21 13:35:40 Found 1 matching instances
+2026/09/21 13:35:40 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:35:41 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:35:41 AVG CPU: 3.9666666666666672  CPU change: 0.1319911969189227
+2026/09/21 13:35:41 AVG Net In (MB): 1.909754753112793  Net In change: -0.03504657745361328
+2026/09/21 13:35:41 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.9666666666666672 AND Average NetIn is < 5mb, currently: 1.909754753112793) but protected at min (1)
+2026/09/21 13:36:41 
+Loop #10 started
+2026/09/21 13:36:41 Found 1 matching instances
+2026/09/21 13:36:41 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:36:41 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:36:41 AVG CPU: 3.8986354775828453  CPU change: -0.06803118908382189
+2026/09/21 13:36:41 AVG Net In (MB): 1.9460220336914062  Net In change: 0.03626728057861328
+2026/09/21 13:36:41 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 3.8986354775828453 AND Average NetIn is < 5mb, currently: 1.9460220336914062) but protected at min (1)
+2026/09/21 13:37:41 
+Loop #11 started
+2026/09/21 13:37:42 Found 1 matching instances
+2026/09/21 13:37:42 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:37:43 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:37:43 AVG CPU: 3.967989329776592  CPU change: 0.06935385219374668
+2026/09/21 13:37:43 AVG Net In (MB): 8.790813446044922  Net In change: 6.844791412353516
+2026/09/21 13:37:43 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 4.0%, NetIn: 8.79 MB/min)
+2026/09/21 13:38:43 
+Loop #12 started
+2026/09/21 13:38:43 Found 1 matching instances
+2026/09/21 13:38:43 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:38:43 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:38:43 AVG CPU: 11.366666666666667  CPU change: 7.398677336890075
+2026/09/21 13:38:43 AVG Net In (MB): 24.048224449157715  Net In change: 15.257411003112793
+2026/09/21 13:38:43 INCREASE_CAPACITY, Average NetIn is > 20mb, currently: 24.048224449157715
+2026/09/21 13:38:45 Started instance i-0c4c315cd6e32cb66 succesfully
+2026/09/21 13:38:50 Instance i-0c4c315cd6e32cb66 is pending
+2026/09/21 13:39:26 Instance i-0c4c315cd6e32cb66 is now running and registered to TG arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2
+2026/09/21 13:40:26 
+Loop #13 started
+2026/09/21 13:40:27 Found 2 matching instances
+2026/09/21 13:40:27 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:40:27 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:40:27 MAINTAIN_CAPACITY, Reason: In cooldown (59s remaining)
+2026/09/21 13:41:27 
+Loop #14 started
+2026/09/21 13:41:27 Found 2 matching instances
+2026/09/21 13:41:27 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:41:27 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:41:28 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:41:28 AVG CPU: 14.580528510198134  CPU change: 5.92343846698377
+2026/09/21 13:41:28 AVG Net In (MB): 11.74048137664795  Net In change: 2.2710399627685547
+2026/09/21 13:41:28 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 14.6%, NetIn: 11.74 MB/min)
+2026/09/21 13:42:28 
+Loop #15 started
+2026/09/21 13:42:28 Found 2 matching instances
+2026/09/21 13:42:28 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:42:29 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:42:29 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:42:29 AVG CPU: 10.997712758572817  CPU change: -3.5828157516253167
+2026/09/21 13:42:29 AVG Net In (MB): 11.4943208694458  Net In change: -0.24616050720214844
+2026/09/21 13:42:29 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 11.0%, NetIn: 11.49 MB/min)
+2026/09/21 13:43:29 
+Loop #16 started
+2026/09/21 13:43:29 Found 2 matching instances
+2026/09/21 13:43:29 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:43:30 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:43:30 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:43:30 AVG CPU: 10.817106400131454  CPU change: -0.18060635844136286
+2026/09/21 13:43:30 AVG Net In (MB): 11.436212539672852  Net In change: -0.05810832977294922
+2026/09/21 13:43:30 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 10.8%, NetIn: 11.44 MB/min)
+2026/09/21 13:44:30 
+Loop #17 started
+2026/09/21 13:44:30 Found 2 matching instances
+2026/09/21 13:44:30 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:44:30 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:44:31 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:44:31 AVG CPU: 36.38349783261087  CPU change: 25.566391432479417
+2026/09/21 13:44:31 AVG Net In (MB): 173.85135316848755  Net In change: 162.4151406288147
+2026/09/21 13:44:31 INCREASE_CAPACITY, Average NetIn is > 20mb, currently: 173.85135316848755
+2026/09/21 13:44:33 Started instance i-0ad54ea11569fbbb5 succesfully
+2026/09/21 13:44:38 Instance i-0ad54ea11569fbbb5 is pending
+2026/09/21 13:45:14 Instance i-0ad54ea11569fbbb5 is now running and registered to TG arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2
+2026/09/21 13:46:14 
+Loop #18 started
+2026/09/21 13:46:14 Found 3 matching instances
+2026/09/21 13:46:15 1: Instance i-0ad54ea11569fbbb5 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:46:15 2: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:46:15 3: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:46:15 MAINTAIN_CAPACITY, Reason: In cooldown (59s remaining)
+2026/09/21 13:47:15 
+Loop #19 started
+2026/09/21 13:47:15 Found 3 matching instances
+2026/09/21 13:47:15 1: Instance i-0ad54ea11569fbbb5 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:47:15 2: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:47:16 3: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:47:16 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:47:16 AVG CPU: 32.03795178995464  CPU change: 3.4656881105941473
+2026/09/21 13:47:16 AVG Net In (MB): 6.075707753499349  Net In change: -2.062857945760091
+2026/09/21 13:47:16 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 32.0%, NetIn: 6.08 MB/min)
+2026/09/21 13:48:16 
+Loop #20 started
+2026/09/21 13:48:16 Found 3 matching instances
+2026/09/21 13:48:16 1: Instance i-0ad54ea11569fbbb5 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:48:16 2: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:48:17 3: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:48:17 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:48:17 AVG CPU: 32.51356427592379  CPU change: 0.47561248596915107
+2026/09/21 13:48:17 AVG Net In (MB): 3.260504722595215  Net In change: -2.815203030904134
+2026/09/21 13:48:17 REDUCE_CAPACITY, Average CPU is < 35%, currently: 32.51356427592379 AND Average NetIn is < 5mb, currently: 3.260504722595215
+2026/09/21 13:48:17 Deregistered instance with ID: i-0ad54ea11569fbbb5 from arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2 successfully!
+2026/09/21 13:50:04 Terminated instance with ID: i-0ad54ea11569fbbb5
+2026/09/21 13:51:04 
+Loop #21 started
+2026/09/21 13:51:04 Found 2 matching instances
+2026/09/21 13:51:05 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:51:05 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:51:05 MAINTAIN_CAPACITY, Reason: In cooldown (59s remaining)
+2026/09/21 13:52:05 
+Loop #22 started
+2026/09/21 13:52:05 Found 2 matching instances
+2026/09/21 13:52:05 1: Instance i-0fa8db6527793f81a of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:52:06 2: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:52:06 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:52:06 AVG CPU: 6.384797974087021  CPU change: 0.11118764967204608
+2026/09/21 13:52:06 AVG Net In (MB): 4.8545379638671875  Net In change: -0.026920318603515625
+2026/09/21 13:52:06 REDUCE_CAPACITY, Average CPU is < 35%, currently: 6.384797974087021 AND Average NetIn is < 5mb, currently: 4.8545379638671875
+2026/09/21 13:52:06 Deregistered instance with ID: i-0fa8db6527793f81a from arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2 successfully!
+2026/09/21 13:53:49 Terminated instance with ID: i-0fa8db6527793f81a
+2026/09/21 13:54:49 
+Loop #23 started
+2026/09/21 13:54:49 Found 1 matching instances
+2026/09/21 13:54:50 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:54:50 MAINTAIN_CAPACITY, Reason: In cooldown (59s remaining)
+2026/09/21 13:55:50 
+Loop #24 started
+2026/09/21 13:55:50 Found 1 matching instances
+2026/09/21 13:55:50 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:55:50 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:55:50 AVG CPU: 9.766666666666667  CPU change: 0.3960955953869689
+2026/09/21 13:55:50 AVG Net In (MB): 8.611732482910156  Net In change: -1.1657791137695312
+2026/09/21 13:55:50 MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 9.8%, NetIn: 8.61 MB/min)
+2026/09/21 13:56:50 
+Loop #25 started
+2026/09/21 13:56:51 Found 1 matching instances
+2026/09/21 13:56:51 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:56:51 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:56:51 AVG CPU: 8.013194282477592  CPU change: -1.7534723841890756
+2026/09/21 13:56:51 AVG Net In (MB): 4.864316940307617  Net In change: -3.747415542602539
+2026/09/21 13:56:51 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 8.013194282477592 AND Average NetIn is < 5mb, currently: 4.864316940307617) but protected at min (1)
+2026/09/21 13:57:51 
+Loop #26 started
+2026/09/21 13:57:51 Found 1 matching instances
+2026/09/21 13:57:52 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:57:52 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:57:52 AVG CPU: 6.419448427651983  CPU change: -1.5937458548256087
+2026/09/21 13:57:52 AVG Net In (MB): 4.781063079833984  Net In change: -0.08325386047363281
+2026/09/21 13:57:52 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.419448427651983 AND Average NetIn is < 5mb, currently: 4.781063079833984) but protected at min (1)
+2026/09/21 13:58:52 
+Loop #27 started
+2026/09/21 13:58:52 Found 1 matching instances
+2026/09/21 13:58:52 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:58:52 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:58:52 AVG CPU: 6.314035818408996  CPU change: -0.10541260924298701
+2026/09/21 13:58:52 AVG Net In (MB): 4.780462265014648  Net In change: -0.0006008148193359375
+2026/09/21 13:58:52 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.314035818408996 AND Average NetIn is < 5mb, currently: 4.780462265014648) but protected at min (1)
+2026/09/21 13:59:52 
+Loop #28 started
+2026/09/21 13:59:53 Found 1 matching instances
+2026/09/21 13:59:53 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 13:59:53 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 13:59:53 AVG CPU: 6.416666666666666  CPU change: 0.10263084825766988
+2026/09/21 13:59:53 AVG Net In (MB): 4.8412580490112305  Net In change: 0.06079578399658203
+2026/09/21 13:59:53 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.416666666666666 AND Average NetIn is < 5mb, currently: 4.8412580490112305) but protected at min (1)
+2026/09/21 14:00:53 
+Loop #29 started
+2026/09/21 14:00:54 Found 1 matching instances
+2026/09/21 14:00:54 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 14:00:54 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 14:00:54 AVG CPU: 6.269278866194247  CPU change: -0.14738780047241917
+2026/09/21 14:00:54 AVG Net In (MB): 4.723484039306641  Net In change: -0.11777400970458984
+2026/09/21 14:00:54 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.269278866194247 AND Average NetIn is < 5mb, currently: 4.723484039306641) but protected at min (1)
+2026/09/21 14:01:54 
+Loop #30 started
+2026/09/21 14:01:54 Found 1 matching instances
+2026/09/21 14:01:54 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 14:01:55 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 14:01:55 AVG CPU: 6.133333333333333  CPU change: -0.13594553286091404
+2026/09/21 14:01:55 AVG Net In (MB): 4.761232376098633  Net In change: 0.03774833679199219
+2026/09/21 14:01:55 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.133333333333333 AND Average NetIn is < 5mb, currently: 4.761232376098633) but protected at min (1)
+2026/09/21 14:02:55 
+Loop #31 started
+2026/09/21 14:02:55 Found 1 matching instances
+2026/09/21 14:02:55 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 14:02:55 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 14:02:55 AVG CPU: 6.2333333333333325  CPU change: 0.09999999999999964
+2026/09/21 14:02:55 AVG Net In (MB): 4.678737640380859  Net In change: -0.08249473571777344
+2026/09/21 14:02:55 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.2333333333333325 AND Average NetIn is < 5mb, currently: 4.678737640380859) but protected at min (1)
+2026/09/21 14:03:55 
+Loop #32 started
+2026/09/21 14:03:56 Found 1 matching instances
+2026/09/21 14:03:56 1: Instance i-0c4c315cd6e32cb66 of type t2.micro, has state: running and TG state is: healthy
+2026/09/21 14:03:56 Lookback window: 2m0s, Period: 1min, Metrics:
+2026/09/21 14:03:56 AVG CPU: 6.1499999999999995  CPU change: -0.08333333333333304
+2026/09/21 14:03:56 AVG Net In (MB): 4.743324279785156  Net In change: 0.06458663940429688
+2026/09/21 14:03:56 MAINTAIN_CAPACITY, Reason: Scale-down desired (Average CPU is < 35%, currently: 6.1499999999999995 AND Average NetIn is < 5mb, currently: 4.743324279785156) but protected at min (1)
