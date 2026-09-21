@@ -13,7 +13,6 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 
 - [System Architecture](#-system-architecture)
 - [Key Features](#-key-features)
-- [Auto-Scaling Decision Engine](#-auto-scaling-decision-engine)
 - [Instance Lifecycle & Safety Mechanisms](#-instance-lifecycle--safety-mechanisms)
 - [Repository Structure](#-repository-structure)
 - [Prerequisites & AWS Setup](#-prerequisites--aws-setup)
@@ -21,7 +20,6 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 - [Build and Execution](#-build-and-execution)
 - [Load Testing & Benchmarking](#-load-testing--benchmarking)
 - [Experimental Results](#-experimental-results)
-- [Clean Architecture & Idiomatic Go Patterns](#-clean-architecture--idiomatic-go-patterns)
 
 ---
 
