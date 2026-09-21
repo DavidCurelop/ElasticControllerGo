@@ -14,7 +14,6 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 - [System Architecture](#-system-architecture)
 - [Key Features](#-key-features)
 - [Instance Lifecycle & Safety Mechanisms](#-instance-lifecycle--safety-mechanisms)
-- [Repository Structure](#-repository-structure)
 - [Prerequisites & AWS Setup](#-prerequisites--aws-setup)
 - [Configuration](#-configuration)
 - [Build and Execution](#-build-and-execution)
@@ -72,27 +71,6 @@ The elasticity controller acts as an external control loop decoupling workload s
 3. **Drain Verification**: Awaits target state transitioning to `unused` (ALB deregistration delay completes and active in-flight requests finish).
 4. **Termination**: Calls `ec2.TerminateInstances`.
 5. **Termination Waiter**: Utilizes AWS SDK `ec2.NewInstanceTerminatedWaiter` to ensure instances enter terminal state cleanly.
-
----
-
-## Repository Structure
-
-```
-ElasticControllerGo/
-├── .agents/                    # Agent instructions and workflows
-├── ControllerMain.go           # Core autonomous elasticity controller
-├── RealTrafficTest.go          # High-performance multi-phase load generator
-├── controller_scaling_results.png # Visual benchmark scaling graph
-├── go.mod                      # Go module definition (Go 1.27.1)
-├── go.sum                      # Checksums for AWS SDK v2 dependencies
-├── TestResults/                # Performance benchmarks & experiment logs
-│   ├── controllerTest3.log     # Controller execution trace
-│   ├── experiment_metrics_Test1.xlsx
-│   ├── experiment_metrics_Test2.xlsx
-│   └── experiment_metrics_Test3.xlsx
-├── AGENTS.md                   # Clean Architecture & SDK guidelines
-└── README.md                   # Project documentation
-```
 
 ---
 
