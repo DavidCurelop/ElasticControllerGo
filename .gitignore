@@ -1,7 +1,7 @@
 .env
 .aws
 *.pem
-*.png
 traffic_generator
 *.csv
 realtraffic
+results.py
