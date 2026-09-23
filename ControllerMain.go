@@ -86,7 +86,7 @@ func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
 
 func DefaultControllerConfig() *ControllerConfig {
 	return &ControllerConfig{
-		TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2",
+		TargetGroupARN: "",
 		InstanceAMI:    "",
 
 		InstanceTag:  "WebServer",
@@ -104,6 +104,23 @@ func DefaultControllerConfig() *ControllerConfig {
 		AVGNetInIncreaseThreshold:  20,
 		AVGNetInDecreaseThreshold:  5,
 	}
+}
+
+func SaveControllerConfig(configFilePath string, config *ControllerConfig) error {
+	// TODO: Step 1 - Marshal config to indented JSON bytes with json.MarshalIndent(config, "", "  ")
+	newConfigBytes, err := json.MarshalIndent(config, "", " ")
+
+	if err != nil {
+		return fmt.Errorf("marshaling configuration: %w", err)
+	}
+
+	err = os.WriteFile(configFilePath, newConfigBytes, 0644)
+
+	if err != nil {
+		return fmt.Errorf("writing config file %q: %w", configFilePath, err)
+	}
+
+	return nil
 }
 
 func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookback int) (float64, time.Time, bool) {
@@ -125,6 +142,7 @@ func main() {
 	configAddress := flag.String("conf", "./config.json", "Controller config file")
 	logAddress := flag.String("log", "./controller.log", "Controller log file")
 	flag.Parse()
+
 	logFile, err := os.OpenFile(*logAddress, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatalf("opening controller log file: %v", err)
@@ -188,9 +206,35 @@ func main() {
 		}
 
 		controllerConfig.InstanceAMI = aws.ToString(getParameterOutput.Parameter.Value)
+		err = SaveControllerConfig(*configAddress, controllerConfig)
+		if err != nil {
+			log.Fatalf("Error saving updated config %v", err)
+		}
+
 		log.Printf("Null AMI was updated to region specific ubuntu 24.04 image: %v", controllerConfig.InstanceAMI)
 	}
 
+	//default target group
+	if controllerConfig.TargetGroupARN == "" {
+		vpcID, err := instanceService.GetDefaultVPCID(ctx)
+
+		if err != nil {
+			log.Fatalf("Error getting default vpc %v", err)
+		}
+
+		TargetGroupARN, err := elbService.CreateTargetGroup(ctx, "controllerTG", vpcID, 80)
+
+		if err != nil {
+			log.Fatalf("Error creating Target group in VPC %v %v", vpcID, err)
+		}
+
+		controllerConfig.TargetGroupARN = TargetGroupARN
+		err = SaveControllerConfig(*configAddress, controllerConfig)
+		if err != nil {
+			log.Fatalf("Error saving updated config %v", err)
+		}
+		log.Printf("A new target group was created with arn: %v", controllerConfig.TargetGroupARN)
+	}
 
 	errorCooldown := time.Duration(controllerConfig.ErrorCooldownSeconds) * time.Second
 	lookbackWindow := time.Duration(controllerConfig.LookbackWindowMinutes) * time.Minute
@@ -434,6 +478,25 @@ func (s *InstanceService) TerminateInstances(ctx context.Context, instances []ty
 	return TerminateOutput, nil
 }
 
+func (s *InstanceService) GetDefaultVPCID(ctx context.Context) (string, error) {
+	describeVpcsInput := &ec2.DescribeVpcsInput{
+		Filters: []types.Filter{{
+			Name:   aws.String("is-default"),
+			Values: []string{"true"},
+		}},
+	}
+
+	describeVpcsOutput, err := s.ec2Client.DescribeVpcs(ctx, describeVpcsInput)
+	if err != nil {
+		return "", fmt.Errorf("descovering default VPC: %w", err)
+	}
+
+	if len(describeVpcsOutput.Vpcs) == 0 {
+		return "", fmt.Errorf("No default VPC found")
+	}
+	return aws.ToString(describeVpcsOutput.Vpcs[0].VpcId), nil
+}
+
 func (s *MetricService) GetAllMetrics(ctx context.Context, instances []types.Instance, lookbackWindow time.Duration) ([][]cwtypes.MetricDataResult, error) {
 	var metrics [][]cwtypes.MetricDataResult
 	for _, instance := range instances {
@@ -517,7 +580,7 @@ func (s *elbService) CreateTargetGroup(ctx context.Context, targetGroupName stri
 		return "", fmt.Errorf("creating target group %q in VPC %q: %w", targetGroupName, vpcID, err)
 	}
 
-	if createTargetGroupOutput.TargetGroups == nil {
+	if len(createTargetGroupOutput.TargetGroups) == 0 {
 		return "", fmt.Errorf("%v is empty", targetGroupName)
 	}
 
