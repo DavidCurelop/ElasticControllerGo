@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbtypes "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
+	ssm "github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 type InstanceService struct {
@@ -86,7 +87,7 @@ func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
 func DefaultControllerConfig() *ControllerConfig {
 	return &ControllerConfig{
 		TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2",
-		InstanceAMI: "ami-0f8a61b66d1accaee",
+		InstanceAMI:    "",
 
 		InstanceTag:  "WebServer",
 		InstanceType: types.InstanceTypeT2Micro,
@@ -95,7 +96,7 @@ func DefaultControllerConfig() *ControllerConfig {
 		MaxInstances:               5,
 		MinInstances:               1,
 		InstanceKey:                "vockey",
-		SecurityGroupIDs:           []string{"sg-0e41161d4476bb460"},
+		SecurityGroupIDs:           []string{},
 		LookbackWindowMinutes:      2,
 		AVGCPUIncreaseThreshold:    70,
 		AVGCPUDecreaseThreshold:    35,
@@ -156,18 +157,8 @@ func main() {
 		log.Printf("loading configuration: %v", err)
 	}
 
-	errorCooldown := time.Duration(controllerConfig.ErrorCooldownSeconds) * time.Second
-	lookbackWindow := time.Duration(controllerConfig.LookbackWindowMinutes) * time.Minute
-
-	instanceData := &instanceCreationInput{
-		imageID:          aws.String(controllerConfig.InstanceAMI),
-		instanceType:     controllerConfig.InstanceType,
-		instanceTag:      controllerConfig.InstanceTag,
-		instanceKeyName:  controllerConfig.InstanceKey,
-		securityGroupIDs: controllerConfig.SecurityGroupIDs,
-	}
-
 	// Service creation and instantiation
+	ssmClient := ssm.NewFromConfig(awsConfig)
 	ec2Client := ec2.NewFromConfig(awsConfig)
 	instanceService := &InstanceService{
 		ec2Client: ec2Client,
@@ -183,6 +174,33 @@ func main() {
 
 	cwService := &MetricService{
 		cloudwatchClient: cwClient,
+	}
+
+	//default instance AMI
+	if controllerConfig.InstanceAMI == "" {
+		getParameterInput := &ssm.GetParameterInput{
+			Name: aws.String("/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"),
+		}
+
+		getParameterOutput, err := ssmClient.GetParameter(ctx, getParameterInput)
+		if err != nil {
+			log.Fatalf("Error getting parameter %v, %v", aws.ToString(getParameterInput.Name), err)
+		}
+
+		controllerConfig.InstanceAMI = aws.ToString(getParameterOutput.Parameter.Value)
+		log.Printf("Null AMI was updated to region specific ubuntu 24.04 image: %v", controllerConfig.InstanceAMI)
+	}
+
+
+	errorCooldown := time.Duration(controllerConfig.ErrorCooldownSeconds) * time.Second
+	lookbackWindow := time.Duration(controllerConfig.LookbackWindowMinutes) * time.Minute
+
+	instanceData := &instanceCreationInput{
+		imageID:          aws.String(controllerConfig.InstanceAMI),
+		instanceType:     controllerConfig.InstanceType,
+		instanceTag:      controllerConfig.InstanceTag,
+		instanceKeyName:  controllerConfig.InstanceKey,
+		securityGroupIDs: controllerConfig.SecurityGroupIDs,
 	}
 
 	for Loop := 1; true; Loop++ {
@@ -483,6 +501,27 @@ func (s *MetricService) GetInstanceMetrics(ctx context.Context, instanceID strin
 	// TODO: Step 4 - Inspect the returned results. Handle the "no data yet" case safely.
 	//       Return the most recent data point value, or a sentinel/zero value if empty.
 	return getmetricsOutput.MetricDataResults, nil
+}
+
+func (s *elbService) CreateTargetGroup(ctx context.Context, targetGroupName string, vpcID string, port int32) (string, error) {
+	createTargetGroupInput := &elasticloadbalancingv2.CreateTargetGroupInput{
+		Name:       aws.String(targetGroupName),
+		VpcId:      aws.String(vpcID),
+		Port:       aws.Int32(port),
+		Protocol:   elbtypes.ProtocolEnumHttp,
+		TargetType: elbtypes.TargetTypeEnumInstance,
+	}
+
+	createTargetGroupOutput, err := s.elbClient.CreateTargetGroup(ctx, createTargetGroupInput)
+	if err != nil {
+		return "", fmt.Errorf("creating target group %q in VPC %q: %w", targetGroupName, vpcID, err)
+	}
+
+	if createTargetGroupOutput.TargetGroups == nil {
+		return "", fmt.Errorf("%v is empty", targetGroupName)
+	}
+
+	return aws.ToString(createTargetGroupOutput.TargetGroups[0].TargetGroupArn), nil
 }
 
 func (s *elbService) RegisterTarget(ctx context.Context, targetGroupARN string, instance types.Instance) error {
