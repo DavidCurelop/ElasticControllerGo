@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	cwtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -139,7 +140,16 @@ func main() {
 	awsConfig, configError := config.LoadDefaultConfig(ctx)
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
-		log.Printf("AWS config loading failed with error %v", configError)
+		log.Fatalf("AWS config loading failed with error %v", configError)
+	}
+
+	if awsConfig.Region == "" {
+		imdsClient := imds.NewFromConfig(awsConfig)
+		regionOutput, err := imdsClient.GetRegion(ctx, &imds.GetRegionInput{})
+		if err != nil {
+			log.Fatalf("Couldnt identify current region %v", err)
+		}
+		awsConfig.Region = regionOutput.Region
 	}
 
 	controllerConfig, err := LoadControllerConfig(*configAddress)
@@ -248,12 +258,6 @@ func main() {
 		log.Printf("Lookback window: %v, Period: 1min, Metrics:", lookbackWindow)
 		log.Printf("AVG CPU: %v  CPU change: %v", avgCPU, cpuChangeDelta)
 		log.Printf("AVG Net In (MB): %v  Net In change: %v", avgNetInMB, netInChangeDeltaMB)
-		/*
-
-
-		   len(instances) == maxInstances:
-		   maintianReason = "Instances are already at max capacity"
-		*/
 
 		var increaseReason string
 		capacityHeadroom := len(instances) < controllerConfig.MaxInstances
