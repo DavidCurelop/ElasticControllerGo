@@ -86,8 +86,7 @@ func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
 func DefaultControllerConfig() *ControllerConfig {
 	return &ControllerConfig{
 		TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2",
-		//instanceAMI := "ami-0f8a61b66d1accaee"
-		InstanceAMI: "ami-098fa3be973dd6b19",
+		InstanceAMI: "ami-0f8a61b66d1accaee",
 
 		InstanceTag:  "WebServer",
 		InstanceType: types.InstanceTypeT2Micro,
