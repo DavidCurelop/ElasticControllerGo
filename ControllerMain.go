@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -44,6 +46,65 @@ type instanceCreationInput struct {
 	securityGroupIDs []string
 }
 
+type ControllerConfig struct {
+	TargetGroupARN             string             `json:"TargetGroupARN"`
+	InstanceAMI                string             `json:"InstanceAMI"`
+	InstanceTag                string             `json:"InstanceTag"`
+	InstanceType               types.InstanceType `json:"InstanceType"`
+	ErrorCooldownSeconds       int                `json:"ErrorCooldownSeconds"`
+	MaxInstances               int                `json:"MaxInstances"`
+	MinInstances               int                `json:"MinInstances"`
+	InstanceKey                string             `json:"InstanceKey"`
+	SecurityGroupIDs           []string           `json:"SecurityGroupIDs"`
+	LookbackWindowMinutes      int                `json:"LookbackWindowMinutes"`
+	AVGCPUIncreaseThreshold    int                `json:"AVGCPUIncreaseThreshold"`
+	AVGCPUDecreaseThreshold    int                `json:"AVGCPUDecreaseThreshold"`
+	CPUChangeIncreaseThreshold int                `json:"CPUChangeIncreaseThreshold"`
+	AVGNetInIncreaseThreshold  int                `json:"AVGNetInIncreaseThreshold"`
+	AVGNetInDecreaseThreshold  int                `json:"AVGNetInDecreaseThreshold"`
+}
+
+func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
+	// TODO: Step 1 - Read file bytes with os.ReadFile(configFilePath)
+	configJSON, err := os.ReadFile(configFilePath)
+	// TODO: Step 2 - Guard against error with fmt.Errorf("reading config file %q: %w", ...)
+	if err != nil {
+		return DefaultControllerConfig(), fmt.Errorf("Error loading config file %v, loading default config %w", configFilePath, err)
+	}
+
+	var controllerConfig ControllerConfig
+	// TODO: Step 3 - Unmarshal bytes into &controllerConfig with json.Unmarshal
+	err = json.Unmarshal(configJSON, &controllerConfig)
+	// TODO: Step 4 - Guard against unmarshal error with storytelling wrapping
+	if err != nil {
+		return DefaultControllerConfig(), fmt.Errorf("Error unmarshalling file %v, loading default config %w", configFilePath, err)
+	}
+	return &controllerConfig, nil
+}
+
+func DefaultControllerConfig() *ControllerConfig {
+	return &ControllerConfig{
+		TargetGroupARN: "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2",
+		//instanceAMI := "ami-0f8a61b66d1accaee"
+		InstanceAMI: "ami-098fa3be973dd6b19",
+
+		InstanceTag:  "WebServer",
+		InstanceType: types.InstanceTypeT2Micro,
+
+		ErrorCooldownSeconds:       5,
+		MaxInstances:               5,
+		MinInstances:               1,
+		InstanceKey:                "vockey",
+		SecurityGroupIDs:           []string{"sg-0e41161d4476bb460"},
+		LookbackWindowMinutes:      2,
+		AVGCPUIncreaseThreshold:    70,
+		AVGCPUDecreaseThreshold:    35,
+		CPUChangeIncreaseThreshold: 10,
+		AVGNetInIncreaseThreshold:  20,
+		AVGNetInDecreaseThreshold:  5,
+	}
+}
+
 func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookback int) (float64, time.Time, bool) {
 	if len(records) == 0 || lookback < 0 {
 		return 0.0, time.Time{}, false
@@ -60,34 +121,16 @@ func findMetricValue(records []cwtypes.MetricDataResult, targetID string, lookba
 }
 
 func main() {
-	logFile, err := os.OpenFile("controller.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	configAddress := flag.String("conf", "./config.json", "Controller config file")
+	logAddress := flag.String("log", "./controller.log", "Controller log file")
+	flag.Parse()
+	logFile, err := os.OpenFile(*logAddress, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatalf("opening controller log file: %v", err)
 	}
 	defer logFile.Close()
 	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
-	// TODO: Choose destination:
-	// Option A (File only): log.SetOutput(logFile)
-	// Option B (Both file and console): log.SetOutput(io.MultiWriter(os.Stdout, logFile))
 
-	tgARN := "arn:aws:elasticloadbalancing:us-east-1:046172315547:targetgroup/WebServerTG/60e063ee1bef4ce2"
-	//instanceAMI := "ami-0f8a61b66d1accaee"
-	instanceAMI := "ami-098fa3be973dd6b19"
-
-	instanceTag := "WebServer"
-	instaceType := types.InstanceTypeT2Micro
-
-	errorCooldown := 5 * time.Second
-	maxInstances := 5
-	minInstances := 1
-	instnaceKey := "vockey"
-	sgID := []string{"sg-0e41161d4476bb460"}
-	lookbackWindow := 2 * time.Minute
-	AVGCPUIncreaseThreshold := 70
-	AVGCPUDecreaseThreshold := 35
-	CPUChangeIncreaseThreshold := 10
-	AVGNetInIncreaseThreshold := 20
-	AVGNetInDecreaseThreshold := 5
 	var lastScaleTime time.Time
 
 	// TODO: Step 1 - Load config via config.LoadDefaultConfig(ctx)
@@ -96,15 +139,23 @@ func main() {
 	awsConfig, configError := config.LoadDefaultConfig(ctx)
 	// TODO: Step 2 - Check err; if err != nil, exit with log.Fatalf(...)
 	if configError != nil {
-		log.Fatalf("AWS config loading failed with error %v", configError)
+		log.Printf("AWS config loading failed with error %v", configError)
 	}
 
+	controllerConfig, err := LoadControllerConfig(*configAddress)
+	if err != nil {
+		log.Printf("loading configuration: %v", err)
+	}
+
+	errorCooldown := time.Duration(controllerConfig.ErrorCooldownSeconds) * time.Second
+	lookbackWindow := time.Duration(controllerConfig.LookbackWindowMinutes) * time.Minute
+
 	instanceData := &instanceCreationInput{
-		imageID:          aws.String(instanceAMI),
-		instanceType:     instaceType,
-		instanceTag:      instanceTag,
-		instanceKeyName:  instnaceKey,
-		securityGroupIDs: sgID,
+		imageID:          aws.String(controllerConfig.InstanceAMI),
+		instanceType:     controllerConfig.InstanceType,
+		instanceTag:      controllerConfig.InstanceTag,
+		instanceKeyName:  controllerConfig.InstanceKey,
+		securityGroupIDs: controllerConfig.SecurityGroupIDs,
 	}
 
 	// Service creation and instantiation
@@ -129,7 +180,7 @@ func main() {
 		log.Printf("\nLoop #%v started", Loop)
 
 		//Get instances with the tag WebServer
-		instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceTag)
+		instances, err := instanceService.GetInstancesByTag(ctx, "Name", instanceData.instanceTag)
 		log.Printf("Found %d matching instances", len(instances))
 
 		if err != nil {
@@ -140,7 +191,7 @@ func main() {
 
 		if len(instances) == 0 {
 			log.Printf("INCREASE_CAPACITY, No instances currently running")
-			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, tgARN)
+			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, controllerConfig.TargetGroupARN)
 			if capIncreaseErr != nil {
 				log.Printf("Error while increasing capacity: %v", capIncreaseErr)
 				time.Sleep(errorCooldown)
@@ -153,7 +204,7 @@ func main() {
 		//register running instances to TG
 
 		for i, instance := range instances {
-			instanceHealthOutput, err := elbService.GetTargetHealth(ctx, tgARN, instance)
+			instanceHealthOutput, err := elbService.GetTargetHealth(ctx, controllerConfig.TargetGroupARN, instance)
 			if err != nil {
 				continue
 			}
@@ -205,19 +256,19 @@ func main() {
 		*/
 
 		var increaseReason string
-		capacityHeadroom := len(instances) < maxInstances
+		capacityHeadroom := len(instances) < controllerConfig.MaxInstances
 		switch {
-		case avgCPU > float64(AVGCPUIncreaseThreshold):
-			increaseReason = fmt.Sprintf("Average CPU is > %v%%, currently: %v", AVGCPUIncreaseThreshold, avgCPU)
-		case cpuChangeDelta > float64(CPUChangeIncreaseThreshold) && avgCPU > 50:
-			increaseReason = fmt.Sprintf("Average CPU is > 50%%,currently: %v AND CPU usage change was: %v > %v", avgCPU, cpuChangeDelta, CPUChangeIncreaseThreshold)
-		case avgNetInMB > float64(AVGNetInIncreaseThreshold):
-			increaseReason = fmt.Sprintf("Average NetIn is > %vmb, currently: %v", AVGNetInIncreaseThreshold, avgNetInMB)
+		case avgCPU > float64(controllerConfig.AVGCPUIncreaseThreshold):
+			increaseReason = fmt.Sprintf("Average CPU is > %v%%, currently: %v", controllerConfig.AVGCPUIncreaseThreshold, avgCPU)
+		case cpuChangeDelta > float64(controllerConfig.CPUChangeIncreaseThreshold) && avgCPU > 50:
+			increaseReason = fmt.Sprintf("Average CPU is > 50%%,currently: %v AND CPU usage change was: %v > %v", avgCPU, cpuChangeDelta, controllerConfig.CPUChangeIncreaseThreshold)
+		case avgNetInMB > float64(controllerConfig.AVGNetInIncreaseThreshold):
+			increaseReason = fmt.Sprintf("Average NetIn is > %vmb, currently: %v", controllerConfig.AVGNetInIncreaseThreshold, avgNetInMB)
 		}
 
 		if capacityHeadroom && increaseReason != "" {
 			log.Printf("INCREASE_CAPACITY, %v", increaseReason)
-			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, tgARN)
+			capIncreaseErr := INCREASE_CAPACITY(ctx, instanceService, elbService, instanceData, controllerConfig.TargetGroupARN)
 			if capIncreaseErr != nil {
 				log.Printf("Error while increasing capacity: %v", capIncreaseErr)
 				time.Sleep(errorCooldown)
@@ -229,15 +280,15 @@ func main() {
 		}
 
 		var decreaseReason string
-		capacityAboveMin := len(instances) > minInstances
+		capacityAboveMin := len(instances) > controllerConfig.MinInstances
 		switch {
-		case avgCPU < float64(AVGCPUDecreaseThreshold) && avgNetInMB < float64(AVGNetInDecreaseThreshold):
-			decreaseReason = fmt.Sprintf("Average CPU is < %v%%, currently: %v AND Average NetIn is < %vmb, currently: %v", AVGCPUDecreaseThreshold, avgCPU, AVGNetInDecreaseThreshold, avgNetInMB)
+		case avgCPU < float64(controllerConfig.AVGCPUDecreaseThreshold) && avgNetInMB < float64(controllerConfig.AVGNetInDecreaseThreshold):
+			decreaseReason = fmt.Sprintf("Average CPU is < %v%%, currently: %v AND Average NetIn is < %vmb, currently: %v", controllerConfig.AVGCPUDecreaseThreshold, avgCPU, controllerConfig.AVGNetInDecreaseThreshold, avgNetInMB)
 		}
 
 		if capacityAboveMin && decreaseReason != "" {
 			log.Printf("REDUCE_CAPACITY, %v", decreaseReason)
-			err := REDUCE_CAPACITY(ctx, instanceService, elbService, instances, tgARN, 1)
+			err := REDUCE_CAPACITY(ctx, instanceService, elbService, instances, controllerConfig.TargetGroupARN, 1)
 			if err != nil {
 				log.Printf("Error while reducing capacity: %v", err)
 				time.Sleep(errorCooldown)
@@ -251,9 +302,9 @@ func main() {
 
 		switch {
 		case !capacityHeadroom && increaseReason != "":
-			maintianReason = fmt.Sprintf("Scale-up desired (%s) but capped at max (%d)", increaseReason, maxInstances)
+			maintianReason = fmt.Sprintf("Scale-up desired (%s) but capped at max (%d)", increaseReason, controllerConfig.MaxInstances)
 		case !capacityAboveMin && decreaseReason != "":
-			maintianReason = fmt.Sprintf("Scale-down desired (%s) but protected at min (%d)", decreaseReason, minInstances)
+			maintianReason = fmt.Sprintf("Scale-down desired (%s) but protected at min (%d)", decreaseReason, controllerConfig.MinInstances)
 		default:
 			maintianReason = fmt.Sprintf("Metrics in steady state (CPU: %.1f%%, NetIn: %.2f MB/min)", avgCPU, avgNetInMB)
 		}
