@@ -3,8 +3,9 @@
 [![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&logo=go)](https://golang.org)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK%20v2-Go-FF9900?style=flat&logo=amazon-aws)](https://github.com/aws/aws-sdk-go-v2)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey?style=flat&logo=linux)](https://github.com)
+[![Architecture](https://img.shields.io/badge/Architecture-Clean%20%7C%20Decoupled-success)](https://aws.amazon.com)
 
-An autonomous horizontal auto-scaling controller and cloud evaluation engine implemented in Go using the **AWS SDK for Go v2**. 
+An autonomous horizontal auto-scaling controller and cloud evaluation engine implemented in Go using the **AWS SDK for Go v2** (`github.com/aws/aws-sdk-go-v2`).
 
 `ElasticControllerGo` continuously monitors cluster telemetry via Amazon CloudWatch, calculates sliding-window workload gradients, and orchestrates horizontal scale-out and scale-in lifecycle actions across Amazon EC2 instances registered to an Application Load Balancer (ALB) Target Group.
 
@@ -22,18 +23,23 @@ An autonomous horizontal auto-scaling controller and cloud evaluation engine imp
 - [Configuration Reference](#configuration-reference)
   - [CLI Flags](#cli-flags)
   - [Configuration File Schema (`config.json`)](#configuration-file-schema-configjson)
+  - [Detailed Field Descriptions](#detailed-field-descriptions)
+  - [In-Place Defaults & Configuration Persistence](#in-place-defaults--configuration-persistence)
   - [Automatic Parameter Discovery & Self-Healing](#automatic-parameter-discovery--self-healing)
-- [Local Compilation & Build](#local-compilation--build)
+- [Pre-Built Binaries & Local Compilation](#pre-built-binaries--local-compilation)
+  - [Pre-Built Production Binaries (`AppBuilds/`)](#pre-built-production-binaries-appbuilds)
   - [Native Windows Build](#native-windows-build)
+  - [Cross-Compiling for Linux AMD64 from Windows](#cross-compiling-for-linux-amd64-from-windows)
   - [Native Linux / macOS Build](#native-linux--macos-build)
-  - [Cross-Compiling for Linux from Windows](#cross-compiling-for-linux-from-windows)
 - [Linux Deployment as a Systemd Service](#linux-deployment-as-a-systemd-service)
   - [1. Provision Server Directory and Binary](#1-provision-server-directory-and-binary)
   - [2. Configure Server Configuration File](#2-configure-server-configuration-file)
   - [3. Create Systemd Service Unit](#3-create-systemd-service-unit)
   - [4. Service Management & Operations](#4-service-management--operations)
   - [5. Monitoring Logs](#5-monitoring-logs)
-- [Load Testing & Benchmarking](#load-testing--benchmarking)
+- [Load Testing & Benchmarking (`RealTrafficTest.go`)](#load-testing--benchmarking-realtraffictestgo)
+  - [Traffic Phases](#traffic-phases)
+  - [Running the Load Test](#running-the-load-test)
 - [Experimental Results](#experimental-results)
 
 ---
@@ -83,6 +89,7 @@ flowchart TD
     SetCooldown --> Loop
     Maintain --> Loop
 ```
+</details>
 
 ---
 
@@ -94,6 +101,7 @@ flowchart TD
   - Automatically queries AWS Systems Manager (SSM) Parameter Store to fetch the latest stable Ubuntu 24.04 LTS AMI if not explicitly configured.
   - Automatically provisions a default Target Group within the default VPC if none is provided.
   - Detects the current AWS Region dynamically via EC2 Instance Metadata Service (IMDSv2) when running on AWS infrastructure.
+  - In-place unmarshaling merges user-defined keys over default settings and persists the complete, resolved configuration back to disk.
 - **Graceful Lifecycle Coordination**:
   - **Scale-Out**: Launches EC2 instance $\rightarrow$ Polls for `running` state $\rightarrow$ Registers target to ALB $\rightarrow$ Awaits target health status `healthy` before releasing cooldown.
   - **Scale-In**: Deregisters target from ALB $\rightarrow$ Awaits target drain state `unused` $\rightarrow$ Terminates EC2 instance $\rightarrow$ Awaits termination via AWS SDK waiters.
@@ -265,7 +273,7 @@ The controller executable supports two command-line arguments:
 
 | Flag | Default | Description |
 | :--- | :--- | :--- |
-| `-conf` | `./config.json` | Path to JSON configuration file. If the file does not exist, defaults will be used and saved. |
+| `-conf` | `./config.json` | Path to JSON configuration file. If missing, defaults are populated and saved. |
 | `-log` | `./controller.log` | Path to log file where logs are appended concurrently with standard output. |
 
 ### Configuration File Schema (`config.json`)
@@ -312,6 +320,14 @@ Example production `config.json`:
 - **`AVGNetInIncreaseThreshold`** (*int*): Network ingress rate (MB/min) triggering scale-out.
 - **`AVGNetInDecreaseThreshold`** (*int*): Network ingress rate (MB/min) below which scale-in may trigger.
 
+### In-Place Defaults & Configuration Persistence
+
+`ElasticControllerGo` features a zero-maintenance configuration state machine:
+1. **Missing Configuration File**: If the config file does not exist, `LoadControllerConfig` falls back to `DefaultControllerConfig()`, allowing the startup bootstrap sequence to discover cloud resources and write a new `config.json` automatically.
+2. **Partial Keys (In-Place Unmarshaling)**: If the user provides a `config.json` containing only a subset of fields (e.g., only modifying `MaxInstances` and `LookbackWindowMinutes`), Go unmarshals the JSON directly onto the default configuration struct. All unspecified keys retain their production defaults.
+3. **Automatic Disk Persistence**: Immediately following successful unmarshaling or dynamic discovery, the complete configuration is marshaled with indentation and written back to disk (`SaveControllerConfig`).
+4. **Resilient Failure Mode**: If the disk write fails (e.g., read-only filesystem or restricted permissions), the controller logs a warning and proceeds safely with the in-memory configuration without crashing.
+
 ### Automatic Parameter Discovery & Self-Healing
 
 If values are omitted from `config.json`:
@@ -321,9 +337,18 @@ If values are omitted from `config.json`:
 
 ---
 
-## Local Compilation & Build
+## Pre-Built Binaries & Local Compilation
 
-You can compile both `ControllerMain.go` and the benchmarking tool `RealTrafficTest.go` locally on Windows or Linux, or cross-compile for a Linux target directly from Windows.
+### Pre-Built Production Binaries (`AppBuilds/`)
+
+The repository contains pre-compiled, self-contained binaries ready for execution without requiring a local Go installation:
+
+| Platform / Target OS | Controller Executable | Load Generator Executable |
+| :--- | :--- | :--- |
+| **Windows (AMD64)** | `AppBuilds/Windows/controller.exe` | `AppBuilds/Windows/RealTrafficTest.exe` |
+| **Linux (AMD64)** | `AppBuilds/Linux/controller` | `AppBuilds/Linux/realtraffic` |
+
+---
 
 ### Native Windows Build
 
@@ -331,37 +356,22 @@ Run inside the project root in PowerShell:
 
 ```powershell
 # Build Controller
-go build -o ControllerMain.exe ControllerMain.go
+go build -o AppBuilds/Windows/controller.exe ControllerMain.go
 
 # Build Load Generator
-go build -o realtraffic.exe RealTrafficTest.go
+go build -o AppBuilds/Windows/RealTrafficTest.exe RealTrafficTest.go
 ```
 
-To run locally:
+To run locally on Windows:
 ```powershell
-.\ControllerMain.exe -conf .\config.json -log .\controller.log
+.\AppBuilds\Windows\controller.exe -conf .\config.json -log .\controller.log
 ```
 
-### Native Linux / macOS Build
+---
 
-Run inside the project root in bash:
+### Cross-Compiling for Linux AMD64 from Windows
 
-```bash
-# Build Controller
-go build -o controller ControllerMain.go
-
-# Build Load Generator
-go build -o realtraffic RealTrafficTest.go
-```
-
-To run locally:
-```bash
-./controller -conf ./config.json -log ./controller.log
-```
-
-### Cross-Compiling for Linux from Windows
-
-To build a Linux binary (AMD64) from a Windows machine without needing a Linux environment:
+To compile standalone Linux binaries directly from a Windows development environment:
 
 **PowerShell:**
 ```powershell
@@ -369,10 +379,8 @@ To build a Linux binary (AMD64) from a Windows machine without needing a Linux e
 $env:GOOS = "linux"
 $env:GOARCH = "amd64"
 
-# Compile Controller for Linux
+# Compile Controller and Traffic Generator for Linux
 go build -o AppBuilds/Linux/controller ControllerMain.go
-
-# Compile Load Generator for Linux
 go build -o AppBuilds/Linux/realtraffic RealTrafficTest.go
 
 # Reset environment variables back to native Windows
@@ -384,6 +392,25 @@ Remove-Item Env:\GOARCH
 ```bash
 GOOS=linux GOARCH=amd64 go build -o AppBuilds/Linux/controller ControllerMain.go
 GOOS=linux GOARCH=amd64 go build -o AppBuilds/Linux/realtraffic RealTrafficTest.go
+```
+
+---
+
+### Native Linux / macOS Build
+
+Run inside the project root on a Linux or macOS machine:
+
+```bash
+# Build Controller
+go build -o AppBuilds/Linux/controller ControllerMain.go
+
+# Build Load Generator
+go build -o AppBuilds/Linux/realtraffic RealTrafficTest.go
+```
+
+To run locally on Linux:
+```bash
+./AppBuilds/Linux/controller -conf ./config.json -log ./controller.log
 ```
 
 ---
@@ -404,7 +431,7 @@ sudo mkdir -p /opt/elastic-controller
 sudo chown -R ubuntu:ubuntu /opt/elastic-controller
 ```
 
-Transfer the Linux binary (`controller`) and your SSH key / config from your local machine to the server:
+Transfer the Linux binary (`controller`) and your configuration from your local machine to the server:
 
 ```powershell
 # Example SCP from local PowerShell:
@@ -542,7 +569,7 @@ MAINTAIN_CAPACITY, Reason: Metrics in steady state (CPU: 14.2%, NetIn: 1.12 MB/m
 
 ---
 
-## Load Testing & Benchmarking
+## Load Testing & Benchmarking (`RealTrafficTest.go`)
 
 The included `RealTrafficTest.go` generates realistic traffic workloads using an open-loop model calibrated to CloudWatch collection intervals and EC2 bootstrap times.
 
@@ -559,10 +586,10 @@ The included `RealTrafficTest.go` generates realistic traffic workloads using an
 
 ```bash
 # On Linux
-./realtraffic -url "http://<YOUR-ALB-DNS-NAME>" -out "experiment_metrics.csv"
+./AppBuilds/Linux/realtraffic -url "http://<YOUR-ALB-DNS-NAME>" -out "experiment_metrics.csv"
 
 # On Windows
-.\realtraffic.exe -url "http://<YOUR-ALB-DNS-NAME>" -out "experiment_metrics.csv"
+.\AppBuilds\Windows\RealTrafficTest.exe -url "http://<YOUR-ALB-DNS-NAME>" -out "experiment_metrics.csv"
 ```
 
 Console status displays second-by-second throughput and latency percentiles:
@@ -576,7 +603,9 @@ Console status displays second-by-second throughput and latency percentiles:
 
 Experimental benchmarks demonstrate controller responsiveness under load:
 
-![Scaling Results](TestResults/Test4Results.png)
+<p align="center">
+  <img src="../TestResults/Test4Results.png" alt="Scaling Results" width="100%" />
+</p>
 
 1. **Surge Reaction**: During Phase 2 (1500 RPS), CPU utilization rose above 70%, triggering successive scale-out events up to the 5-instance cap. P99 latency dropped significantly as newly registered healthy instances absorbed traffic.
 2. **Stabilization**: In Phase 3, instances remained steady without thrashing or false-positive deregistration.

@@ -3,5 +3,5 @@
 *.pem
 traffic_generator
 *.csv
-realtraffic
+/realtraffic
 results.py
