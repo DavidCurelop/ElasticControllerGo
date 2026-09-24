@@ -67,21 +67,21 @@ type ControllerConfig struct {
 }
 
 func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
-	// TODO: Step 1 - Read file bytes with os.ReadFile(configFilePath)
 	configJSON, err := os.ReadFile(configFilePath)
-	// TODO: Step 2 - Guard against error with fmt.Errorf("reading config file %q: %w", ...)
 	if err != nil {
-		return DefaultControllerConfig(), fmt.Errorf("Error loading config file %v, loading default config %w", configFilePath, err)
+		return DefaultControllerConfig(), fmt.Errorf("error loading config file %v, loading default config %w", configFilePath, err)
 	}
 
-	var controllerConfig ControllerConfig
-	// TODO: Step 3 - Unmarshal bytes into &controllerConfig with json.Unmarshal
-	err = json.Unmarshal(configJSON, &controllerConfig)
-	// TODO: Step 4 - Guard against unmarshal error with storytelling wrapping
+	controllerConfig := DefaultControllerConfig()
+	err = json.Unmarshal(configJSON, controllerConfig)
 	if err != nil {
-		return DefaultControllerConfig(), fmt.Errorf("Error unmarshalling file %v, loading default config %w", configFilePath, err)
+		return controllerConfig, fmt.Errorf("error unmarshalling file %v, loading default config %w", configFilePath, err)
 	}
-	return &controllerConfig, nil
+	err = SaveControllerConfig(configFilePath, controllerConfig)
+	if err != nil {
+		return controllerConfig, fmt.Errorf("Error saving updated config %w", err)
+	}
+	return controllerConfig, nil
 }
 
 func DefaultControllerConfig() *ControllerConfig {
@@ -104,6 +104,7 @@ func DefaultControllerConfig() *ControllerConfig {
 		AVGNetInIncreaseThreshold:  20,
 		AVGNetInDecreaseThreshold:  5,
 	}
+
 }
 
 func SaveControllerConfig(configFilePath string, config *ControllerConfig) error {
@@ -172,7 +173,7 @@ func main() {
 
 	controllerConfig, err := LoadControllerConfig(*configAddress)
 	if err != nil {
-		log.Printf("loading configuration: %v", err)
+		log.Printf("error loading configuration: %v", err)
 	}
 
 	// Service creation and instantiation
@@ -206,12 +207,11 @@ func main() {
 		}
 
 		controllerConfig.InstanceAMI = aws.ToString(getParameterOutput.Parameter.Value)
+		log.Printf("Null AMI was updated to region specific ubuntu 24.04 image: %v", controllerConfig.InstanceAMI)
 		err = SaveControllerConfig(*configAddress, controllerConfig)
 		if err != nil {
 			log.Fatalf("Error saving updated config %v", err)
 		}
-
-		log.Printf("Null AMI was updated to region specific ubuntu 24.04 image: %v", controllerConfig.InstanceAMI)
 	}
 
 	//default target group
@@ -229,11 +229,11 @@ func main() {
 		}
 
 		controllerConfig.TargetGroupARN = TargetGroupARN
+		log.Printf("A new target group was created with arn: %v", controllerConfig.TargetGroupARN)
 		err = SaveControllerConfig(*configAddress, controllerConfig)
 		if err != nil {
 			log.Fatalf("Error saving updated config %v", err)
 		}
-		log.Printf("A new target group was created with arn: %v", controllerConfig.TargetGroupARN)
 	}
 
 	errorCooldown := time.Duration(controllerConfig.ErrorCooldownSeconds) * time.Second
