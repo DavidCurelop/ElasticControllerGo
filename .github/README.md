@@ -3,7 +3,6 @@
 [![Go Version](https://img.shields.io/badge/Go-1.22%2B-00ADD8?style=flat&logo=go)](https://golang.org)
 [![AWS SDK](https://img.shields.io/badge/AWS%20SDK%20v2-Go-FF9900?style=flat&logo=amazon-aws)](https://github.com/aws/aws-sdk-go-v2)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-lightgrey?style=flat&logo=linux)](https://github.com)
-[![Architecture](https://img.shields.io/badge/Architecture-Clean%20%7C%20Decoupled-success)](https://aws.amazon.com)
 
 An autonomous horizontal auto-scaling controller and cloud evaluation engine implemented in Go using the **AWS SDK for Go v2** (`github.com/aws/aws-sdk-go-v2`).
 
