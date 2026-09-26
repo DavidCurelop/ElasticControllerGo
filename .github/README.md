@@ -62,7 +62,7 @@ flowchart TD
     end
 
     subgraph Controller ["ElasticControllerGo (Control Loop)"]
-        Init[Startup / Region Resolution\nIMDS / AWS Config] --> SelfHeal[Self-Discovery / Config Init\nSSM AMI & Target Group]
+        Init[Startup / Region Resolution\nIMDS / AWS Config] --> SelfHeal[Self-Discovery / Config Init\nSSM AMI, Default VPC & TG]
         SelfHeal --> Loop[Evaluation Loop\n60-second Cycle]
         Loop --> Query[CloudWatch GetMetricData\nCPUUtilization & NetworkIn]
         Query --> Evaluate{Decision Engine\nCooldown / Bounds / Thresholds}
@@ -88,7 +88,6 @@ flowchart TD
     SetCooldown --> Loop
     Maintain --> Loop
 ```
-</details>
 
 ---
 
@@ -98,7 +97,8 @@ flowchart TD
 - **Trend-Aware Scaling**: Detects rate-of-change deltas ($\Delta \text{CPU}$) over sliding windows to respond to sudden traffic surges before saturation occurs.
 - **Dynamic Configuration & Self-Healing**:
   - Automatically queries AWS Systems Manager (SSM) Parameter Store to fetch the latest stable Ubuntu 24.04 LTS AMI if not explicitly configured.
-  - Automatically provisions a default Target Group within the default VPC if none is provided.
+  - Automatically discovers the region's default VPC via `ec2:DescribeVpcs` if `VpcID` is not explicitly configured, persisting the resolved ID back to disk.
+  - Automatically provisions a default Target Group within the target VPC if none is provided.
   - Detects the current AWS Region dynamically via EC2 Instance Metadata Service (IMDSv2) when running on AWS infrastructure.
   - In-place unmarshaling merges user-defined keys over default settings and persists the complete, resolved configuration back to disk.
 - **Graceful Lifecycle Coordination**:
@@ -285,6 +285,7 @@ Example production `config.json`:
   "InstanceAMI": "ami-04b4f1a9cf54c11d0",
   "InstanceTag": "WebServer",
   "InstanceType": "t2.micro",
+  "VpcID": "vpc-0123456789abcdef0",
   "ErrorCooldownSeconds": 5,
   "MaxInstances": 5,
   "MinInstances": 1,
@@ -307,6 +308,7 @@ Example production `config.json`:
 - **`InstanceAMI`** (*string*): The AMI ID used to launch worker instances.
 - **`InstanceTag`** (*string*): The tag value assigned to the `Name` tag (`Name: <InstanceTag>`) for cluster identification and discovery.
 - **`InstanceType`** (*string*): EC2 instance type (e.g., `t2.micro`).
+- **`VpcID`** (*string*): The Virtual Private Cloud (VPC) ID (e.g., `vpc-0123456789abcdef0`) used to scope resources such as the auto-provisioned Target Group. If omitted or empty (`""`), the controller discovers and persists the region's default VPC ID.
 - **`ErrorCooldownSeconds`** (*int*): Delay before retrying after a failed API interaction.
 - **`MaxInstances`** (*int*): Upper scaling bound.
 - **`MinInstances`** (*int*): Lower scaling bound.
@@ -331,8 +333,9 @@ Example production `config.json`:
 
 If values are omitted from `config.json`:
 1. **Empty `InstanceAMI`**: The controller queries AWS Systems Manager (SSM) Parameter Store path `/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id` to retrieve the latest official Ubuntu 24.04 LTS AMI for the active region, and persists the discovered AMI ID into `config.json`.
-2. **Empty `TargetGroupARN`**: The controller queries the default VPC via `ec2:DescribeVpcs`, calls `elasticloadbalancing:CreateTargetGroup` to provision a new Target Group named `controllerTG` on HTTP port 80, and persists the new Target Group ARN into `config.json`.
-3. **Empty Region**: When running on an EC2 instance without `$env:AWS_REGION` or `~/.aws/config`, the controller resolves the local region from the EC2 Instance Metadata Service (IMDSv2).
+2. **Empty `VpcID`**: The controller queries AWS via `ec2:DescribeVpcs` with the filter `is-default: true` to discover the region's default VPC, updates the in-memory configuration, and persists it into `config.json`.
+3. **Empty `TargetGroupARN`**: Using the resolved `VpcID` (custom or default), the controller calls `elasticloadbalancing:CreateTargetGroup` to provision a new Target Group named `controllerTG` on HTTP port 80, and persists the new Target Group ARN into `config.json`.
+4. **Empty Region**: When running on an EC2 instance without `$env:AWS_REGION` or `~/.aws/config`, the controller resolves the local region from the EC2 Instance Metadata Service (IMDSv2).
 
 ---
 
@@ -454,6 +457,7 @@ cat << 'EOF' > /opt/elastic-controller/config.json
   "InstanceAMI": "",
   "InstanceTag": "WebServer",
   "InstanceType": "t2.micro",
+  "VpcID": "",
   "ErrorCooldownSeconds": 5,
   "MaxInstances": 5,
   "MinInstances": 1,
@@ -472,7 +476,7 @@ EOF
 ```
 
 > [!TIP]
-> If `InstanceAMI` or `TargetGroupARN` are left as `""`, the controller will automatically discover/provision them on first start and update `config.json`. Ensure the user running the service has write permissions to `/opt/elastic-controller/config.json`.
+> If `InstanceAMI`, `VpcID`, or `TargetGroupARN` are left as `""`, the controller will automatically discover/provision them on first start and update `config.json`. Ensure the user running the service has write permissions to `/opt/elastic-controller/config.json`.
 
 ### 3. Create Systemd Service Unit
 
