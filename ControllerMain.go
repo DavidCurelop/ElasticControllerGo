@@ -46,25 +46,28 @@ type instanceCreationInput struct {
 	instanceTag      string
 	instanceKeyName  string
 	securityGroupIDs []string
+	SubnetID         *string
 }
 
 type ControllerConfig struct {
-	TargetGroupARN             string             `json:"TargetGroupARN"`
-	InstanceAMI                string             `json:"InstanceAMI"`
-	InstanceTag                string             `json:"InstanceTag"`
-	InstanceType               types.InstanceType `json:"InstanceType"`
-	VpcID                      string             `json:"VpcID"`
-	ErrorCooldownSeconds       int                `json:"ErrorCooldownSeconds"`
-	MaxInstances               int                `json:"MaxInstances"`
-	MinInstances               int                `json:"MinInstances"`
-	InstanceKey                string             `json:"InstanceKey"`
-	SecurityGroupIDs           []string           `json:"SecurityGroupIDs"`
-	LookbackWindowMinutes      int                `json:"LookbackWindowMinutes"`
-	AVGCPUIncreaseThreshold    int                `json:"AVGCPUIncreaseThreshold"`
-	AVGCPUDecreaseThreshold    int                `json:"AVGCPUDecreaseThreshold"`
-	CPUChangeIncreaseThreshold int                `json:"CPUChangeIncreaseThreshold"`
-	AVGNetInIncreaseThreshold  int                `json:"AVGNetInIncreaseThreshold"`
-	AVGNetInDecreaseThreshold  int                `json:"AVGNetInDecreaseThreshold"`
+	TargetGroupARN string             `json:"TargetGroupARN"`
+	InstanceAMI    string             `json:"InstanceAMI"`
+	InstanceTag    string             `json:"InstanceTag"`
+	InstanceType   types.InstanceType `json:"InstanceType"`
+	VpcID          string             `json:"VpcID"`
+	SubnetID       *string             `json:"SubnetID"`
+
+	ErrorCooldownSeconds       int      `json:"ErrorCooldownSeconds"`
+	MaxInstances               int      `json:"MaxInstances"`
+	MinInstances               int      `json:"MinInstances"`
+	InstanceKey                string   `json:"InstanceKey"`
+	SecurityGroupIDs           []string `json:"SecurityGroupIDs"`
+	LookbackWindowMinutes      int      `json:"LookbackWindowMinutes"`
+	AVGCPUIncreaseThreshold    int      `json:"AVGCPUIncreaseThreshold"`
+	AVGCPUDecreaseThreshold    int      `json:"AVGCPUDecreaseThreshold"`
+	CPUChangeIncreaseThreshold int      `json:"CPUChangeIncreaseThreshold"`
+	AVGNetInIncreaseThreshold  int      `json:"AVGNetInIncreaseThreshold"`
+	AVGNetInDecreaseThreshold  int      `json:"AVGNetInDecreaseThreshold"`
 }
 
 func LoadControllerConfig(configFilePath string) (*ControllerConfig, error) {
@@ -92,6 +95,7 @@ func DefaultControllerConfig() *ControllerConfig {
 		InstanceTag:    "WebServer",
 		InstanceType:   types.InstanceTypeT2Micro,
 		VpcID:          "",
+		SubnetID:       nil,
 
 		ErrorCooldownSeconds:       5,
 		MaxInstances:               5,
@@ -256,6 +260,7 @@ func main() {
 		instanceTag:      controllerConfig.InstanceTag,
 		instanceKeyName:  controllerConfig.InstanceKey,
 		securityGroupIDs: controllerConfig.SecurityGroupIDs,
+		SubnetID:         controllerConfig.SubnetID,
 	}
 
 	for Loop := 1; true; Loop++ {
@@ -409,6 +414,7 @@ echo "<h1>Hello World from $(hostname -f)</h1>" | sudo tee /var/www/html/index.h
 		MaxCount:         aws.Int32(1),
 		KeyName:          &instanceCreationInput.instanceKeyName,
 		SecurityGroupIds: instanceCreationInput.securityGroupIDs,
+		SubnetId:         instanceCreationInput.SubnetID,
 		Monitoring:       &types.RunInstancesMonitoringEnabled{Enabled: aws.Bool(true)},
 		UserData:         &encodedUserData,
 		TagSpecifications: []types.TagSpecification{
