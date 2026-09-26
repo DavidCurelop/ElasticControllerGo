@@ -53,6 +53,7 @@ type ControllerConfig struct {
 	InstanceAMI                string             `json:"InstanceAMI"`
 	InstanceTag                string             `json:"InstanceTag"`
 	InstanceType               types.InstanceType `json:"InstanceType"`
+	VpcID                      string             `json:"VpcID"`
 	ErrorCooldownSeconds       int                `json:"ErrorCooldownSeconds"`
 	MaxInstances               int                `json:"MaxInstances"`
 	MinInstances               int                `json:"MinInstances"`
@@ -88,9 +89,9 @@ func DefaultControllerConfig() *ControllerConfig {
 	return &ControllerConfig{
 		TargetGroupARN: "",
 		InstanceAMI:    "",
-
-		InstanceTag:  "WebServer",
-		InstanceType: types.InstanceTypeT2Micro,
+		InstanceTag:    "WebServer",
+		InstanceType:   types.InstanceTypeT2Micro,
+		VpcID:          "",
 
 		ErrorCooldownSeconds:       5,
 		MaxInstances:               5,
@@ -214,18 +215,28 @@ func main() {
 		}
 	}
 
-	//default target group
-	if controllerConfig.TargetGroupARN == "" {
-		vpcID, err := instanceService.GetDefaultVPCID(ctx)
+	if controllerConfig.VpcID == "" {
+		controllerConfig.VpcID, err = instanceService.GetDefaultVPCID(ctx)
 
 		if err != nil {
 			log.Fatalf("Error getting default vpc %v", err)
 		}
 
-		TargetGroupARN, err := elbService.CreateTargetGroup(ctx, "controllerTG", vpcID, 80)
+		log.Printf("Set VPC to default %v", controllerConfig.VpcID)
+
+		err = SaveControllerConfig(*configAddress, controllerConfig)
+		if err != nil {
+			log.Fatalf("Error saving updated config %v", err)
+		}
+	}
+
+	//default target group
+	if controllerConfig.TargetGroupARN == "" {
+
+		TargetGroupARN, err := elbService.CreateTargetGroup(ctx, "controllerTG", controllerConfig.VpcID, 80)
 
 		if err != nil {
-			log.Fatalf("Error creating Target group in VPC %v %v", vpcID, err)
+			log.Fatalf("Error creating Target group in VPC %v %v", controllerConfig.VpcID, err)
 		}
 
 		controllerConfig.TargetGroupARN = TargetGroupARN
